@@ -94,12 +94,17 @@
 
   <div class="toast hidden" id="toast"></div>
 
+  <script src="/vendor/firebase/firebase-app-compat.js"></script>
+  <script src="/vendor/firebase/firebase-auth-compat.js"></script>
+  <script src="/auth-client.js"></script>
   <script>
     const CATEGORIES = ['Coffee','Tea','Juices & Shakes','Beverages','Snacks','Mains','Desserts','Bakery','Other'];
     let items = [];
     let editingId = null;
 
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
+      const session = await window.QRCafeAuth.requireAuth();
+      if (!session) return;
       loadItems();
       document.getElementById('submit-btn').addEventListener('click', handleSubmit);
       document.getElementById('cancel-btn').addEventListener('click', cancelEdit);
@@ -180,13 +185,13 @@
       el.innerHTML = html;
 
       el.querySelectorAll('.btn-edit').forEach(b =>
-        b.addEventListener('click', () => startEdit(parseInt(b.dataset.id))));
+        b.addEventListener('click', () => startEdit(b.dataset.id)));
       el.querySelectorAll('.btn-toggle').forEach(b =>
-        b.addEventListener('click', () => toggleAvail(parseInt(b.dataset.id), b.dataset.avail === 'true')));
+        b.addEventListener('click', () => toggleAvail(b.dataset.id, b.dataset.avail === 'true')));
       el.querySelectorAll('.btn-delete').forEach(b =>
-        b.addEventListener('click', () => deleteItem(parseInt(b.dataset.id))));
+        b.addEventListener('click', () => deleteItem(b.dataset.id)));
       el.querySelectorAll('.btn-trend').forEach(b =>
-        b.addEventListener('click', () => toggleTrending(parseInt(b.dataset.id), b.dataset.trending === 'true')));
+        b.addEventListener('click', () => toggleTrending(b.dataset.id, b.dataset.trending === 'true')));
     }
 
     // ── add / edit ─────────────────────────────────────────

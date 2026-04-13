@@ -4,44 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sign Up - QR Cafe</title>
-  <link rel="stylesheet" href="style.css">
+  <meta http-equiv="refresh" content="0; url=/sign-up">
 </head>
-<body class="auth-page">
-  <div class="auth-card">
-    <div class="auth-logo">Cafe</div>
-    <h1 class="auth-title">Create your cafe</h1>
-    <p class="auth-sub">Start with menu, tables, cashier, and analytics</p>
-    <div class="field"><label>Cafe name</label><input type="text" id="name" placeholder="Brew House"></div>
-    <div class="field"><label>Email</label><input type="email" id="email" placeholder="you@cafe.com"></div>
-    <div class="field"><label>Password</label><input type="password" id="password" placeholder="Minimum 6 characters"></div>
-    <p class="auth-error hidden" id="error"></p>
-    <button class="btn-primary auth-btn" id="signup-btn">Create Account</button>
-    <p class="auth-switch">Already have an account? <a href="/login">Sign in</a></p>
-  </div>
+<body>
   <script>
-    async function submit() {
-      const name = document.getElementById('name').value.trim();
-      const email = document.getElementById('email').value.trim();
-      const password = document.getElementById('password').value;
-      const error = document.getElementById('error');
-      const btn = document.getElementById('signup-btn');
-      error.classList.add('hidden');
-      btn.disabled = true;
-      btn.textContent = 'Creating...';
-      try {
-        const res = await fetch('/api/auth/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, email, password }) });
-        const data = await res.json();
-        if (!res.ok) { error.textContent = data.error || 'Signup failed'; error.classList.remove('hidden'); return; }
-        window.location.href = '/dashboard';
-      } catch {
-        error.textContent = 'Network error. Please try again.';
-        error.classList.remove('hidden');
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Create Account';
-      }
-    }
-    document.getElementById('signup-btn').addEventListener('click', submit);
+    window.location.replace('/sign-up');
   </script>
 </body>
 </html>

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In - QR Cafe</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="auth-page">
+  <div class="auth-card">
+    <div class="auth-logo">Cafe</div>
+    <h1 class="auth-title">Sign in to your cafe</h1>
+    <p class="auth-sub">Use your Firebase email and password to open the dashboard.</p>
+    <div class="field"><label>Email address</label><input type="email" id="email" placeholder="you@cafe.com"></div>
+    <div class="field"><label>Password</label><input type="password" id="password" placeholder="Minimum 6 characters"></div>
+    <p class="auth-error hidden" id="error"></p>
+    <button class="btn-primary auth-btn" id="sign-in-btn">Sign In</button>
+    <p class="auth-switch">Need a new cafe account? <a href="/sign-up">Sign up</a></p>
+    <p class="auth-help">Authentication is powered by Firebase Auth using your email and password.</p>
+  </div>
+  <script src="/vendor/firebase/firebase-app-compat.js"></script>
+  <script src="/vendor/firebase/firebase-auth-compat.js"></script>
+  <script src="/auth-client.js"></script>
+  <script>
+    window.QRCafeAuth.redirectIfAuthenticated();
+
+    async function submit() {
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const error = document.getElementById('error');
+      const btn = document.getElementById('sign-in-btn');
+      error.classList.add('hidden');
+      btn.disabled = true;
+      btn.textContent = 'Signing in...';
+
+      try {
+        await window.QRCafeAuth.signInWithEmail(email, password);
+        window.location.href = '/dashboard';
+      } catch (err) {
+        error.textContent = err.message || 'Sign in failed. Please try again.';
+        error.classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Sign In';
+      }
+    }
+
+    document.getElementById('sign-in-btn').addEventListener('click', submit);
+    document.getElementById('password').addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') submit();
+    });
+    document.getElementById('email').addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') submit();
+    });
+  </script>
+</body>
+</html>

@@ -15,11 +15,19 @@
   </main>
   <div class="qr-modal hidden" id="qr-modal"><div class="qr-modal-box"><div class="qr-modal-header"><h3 id="qr-modal-title">QR Code</h3><button class="cart-close" id="qr-modal-close">x</button></div><img id="qr-img" src="" alt="QR" style="width:250px;height:250px"><p class="qr-url" id="qr-url"></p><button class="btn-primary" onclick="window.print()">Print</button></div></div>
   <div class="overlay hidden" id="overlay"></div><div class="toast hidden" id="toast"></div>
+  <script src="/vendor/firebase/firebase-app-compat.js"></script>
+  <script src="/vendor/firebase/firebase-auth-compat.js"></script>
+  <script src="/auth-client.js"></script>
   <script>
     let tables = [];
-    document.getElementById('add-table-btn').addEventListener('click', addTable);
-    document.getElementById('qr-modal-close').addEventListener('click', closeQR);
-    document.getElementById('overlay').addEventListener('click', closeQR);
+    document.addEventListener('DOMContentLoaded', async () => {
+      const session = await window.QRCafeAuth.requireAuth();
+      if (!session) return;
+      document.getElementById('add-table-btn').addEventListener('click', addTable);
+      document.getElementById('qr-modal-close').addEventListener('click', closeQR);
+      document.getElementById('overlay').addEventListener('click', closeQR);
+      loadTables();
+    });
     async function loadTables() { try { const res = await fetch('/api/tables'); tables = await res.json(); document.getElementById('table-count').textContent = tables.length + ' tables'; renderTables(); } catch { document.getElementById('tables-list').innerHTML = '<p class="error-msg">Failed to load tables.</p>'; } }
     function renderTables() { const el = document.getElementById('tables-list'); if (!tables.length) { el.innerHTML = '<p class="error-msg">No tables yet.</p>'; return; } el.innerHTML = tables.map(t => `<div class="admin-item-row"><div class="admin-item-info"><span class="admin-item-name">Table #${t.number}</span><span class="admin-item-desc">${esc(t.label || '')}</span></div><div class="admin-item-actions"><button class="btn-sm btn-edit" data-id="${t.id}">QR</button><button class="btn-sm btn-delete" data-id="${t.id}">Delete</button></div></div>`).join(''); el.querySelectorAll('.btn-edit').forEach(btn => btn.addEventListener('click', () => showQR(btn.dataset.id))); el.querySelectorAll('.btn-delete').forEach(btn => btn.addEventListener('click', () => deleteTable(btn.dataset.id))); }
     async function addTable() { const number = parseInt(document.getElementById('t-number').value, 10); const label = document.getElementById('t-label').value.trim(); const error = document.getElementById('table-error'); error.classList.add('hidden'); try { const res = await fetch('/api/tables', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ number, label }) }); const data = await res.json(); if (!res.ok) { error.textContent = data.error || 'Failed to add table'; error.classList.remove('hidden'); return; } document.getElementById('t-number').value = ''; document.getElementById('t-label').value = ''; showToast('Table added.'); loadTables(); } catch { error.textContent = 'Network error'; error.classList.remove('hidden'); } }
@@ -28,7 +36,6 @@
     function closeQR() { document.getElementById('qr-modal').classList.add('hidden'); document.getElementById('overlay').classList.add('hidden'); }
     function esc(str) { const d = document.createElement('div'); d.textContent = str || ''; return d.innerHTML; }
     function showToast(msg, type) { const t = document.getElementById('toast'); t.textContent = msg; t.className = 'toast ' + (type || 'success'); setTimeout(() => t.classList.add('hidden'), 3000); }
-    loadTables();
   </script>
 </body>
 </html>

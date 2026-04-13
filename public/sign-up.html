@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign Up - QR Cafe</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="auth-page">
+  <div class="auth-card">
+    <div class="auth-logo">Cafe</div>
+    <h1 class="auth-title">Create a cafe account</h1>
+    <p class="auth-sub">Set up a new Firebase-authenticated workspace for your cafe.</p>
+    <div class="field"><label>Cafe name</label><input type="text" id="name" placeholder="Brew House"></div>
+    <div class="field"><label>Email address</label><input type="email" id="email" placeholder="you@cafe.com"></div>
+    <div class="field"><label>Password</label><input type="password" id="password" placeholder="Minimum 6 characters"></div>
+    <p class="auth-error hidden" id="error"></p>
+    <button class="btn-primary auth-btn" id="sign-up-btn">Sign Up</button>
+    <p class="auth-switch">Already have a cafe account? <a href="/sign-in">Sign in</a></p>
+    <p class="auth-help">Your sign-up creates a Firebase Auth user and then starts your QR Cafe workspace.</p>
+  </div>
+  <script src="/vendor/firebase/firebase-app-compat.js"></script>
+  <script src="/vendor/firebase/firebase-auth-compat.js"></script>
+  <script src="/auth-client.js"></script>
+  <script>
+    window.QRCafeAuth.redirectIfAuthenticated();
+
+    async function submit() {
+      const name = document.getElementById('name').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const error = document.getElementById('error');
+      const btn = document.getElementById('sign-up-btn');
+      error.classList.add('hidden');
+      btn.disabled = true;
+      btn.textContent = 'Creating account...';
+
+      try {
+        await window.QRCafeAuth.signUpWithEmail(name, email, password);
+        window.location.href = '/dashboard';
+      } catch (err) {
+        error.textContent = err.message || 'Sign up failed. Please try again.';
+        error.classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Sign Up';
+      }
+    }
+
+    document.getElementById('sign-up-btn').addEventListener('click', submit);
+    document.getElementById('password').addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') submit();
+    });
+    document.getElementById('email').addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') submit();
+    });
+  </script>
+</body>
+</html>

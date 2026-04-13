@@ -10,6 +10,9 @@
 <body class="admin-page">
   <header class="dash-header"><div class="dash-header-left"><img class="cafe-logo" src="" alt="logo" style="display:none;height:28px;width:28px;object-fit:contain;border-radius:6px;"><h1>Analytics</h1></div><div class="dash-header-right"><a href="/dashboard" class="header-link">Dashboard</a></div></header>
   <main class="admin-main analytics-grid" id="analytics-root"><div class="loading-state"><div class="spinner"></div><p>Loading analytics...</p></div></main>
+  <script src="/vendor/firebase/firebase-app-compat.js"></script>
+  <script src="/vendor/firebase/firebase-auth-compat.js"></script>
+  <script src="/auth-client.js"></script>
   <script>
     function money(value) { return 'Rs ' + ((parseInt(value || 0, 10)) / 100).toFixed(0); }
     async function loadAnalytics() {
@@ -33,7 +36,11 @@
         document.getElementById('analytics-root').innerHTML = '<p class="error-msg">Failed to load analytics.</p>';
       }
     }
-    loadAnalytics();
+    document.addEventListener('DOMContentLoaded', async () => {
+      const session = await window.QRCafeAuth.requireAuth();
+      if (!session) return;
+      loadAnalytics();
+    });
   </script>
 </body>
 </html>

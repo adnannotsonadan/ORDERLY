@@ -5,8 +5,9 @@
   "main": "server.js",
   "type": "module",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js"
+    "start": "node --env-file-if-exists=.env.local --env-file-if-exists=.env server.js",
+    "dev": "nodemon server.js",
+    "migrate:firebase": "node --env-file-if-exists=.env.local --env-file-if-exists=.env scripts/migrate-postgres-to-firestore.js"
   },
   "keywords": [
     "qr",
@@ -17,7 +18,11 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "dotenv": "^17.4.1",
     "express": "^4.18.2",
+    "firebase": "^12.11.0",
+    "firebase-admin": "^13.7.0",
+    "nodemon": "^3.1.14",
     "pg": "^8.11.3",
     "qrcode": "^1.5.3"
   }

@@ -17,8 +17,14 @@
     <section class="admin-form-card"><h2>Quick Actions</h2><div class="quick-links"><a href="/admin" class="quick-link-card"><div class="ql-label">Menu Management</div><div class="ql-sub">Add, edit, and group items</div></a><a href="/cashier" class="quick-link-card"><div class="ql-label">Cashier</div><div class="ql-sub">Track live orders and waiter calls</div></a><a href="/tables" class="quick-link-card"><div class="ql-label">Tables & QR</div><div class="ql-sub">Create tables and print QR codes</div></a><a href="/analytics" class="quick-link-card"><div class="ql-label">Analytics</div><div class="ql-sub">Revenue and bestseller trends</div></a></div></section>
     <section class="admin-form-card"><h2>Recent Orders</h2><div id="recent-orders"><div class="loading-state"><div class="spinner"></div></div></div></section>
   </main>
+  <script src="/vendor/firebase/firebase-app-compat.js"></script>
+  <script src="/vendor/firebase/firebase-auth-compat.js"></script>
+  <script src="/auth-client.js"></script>
   <script>
-    document.getElementById('logout-btn').addEventListener('click', async () => { await fetch('/api/auth/logout', { method: 'POST' }); window.location.href = '/login'; });
+    document.getElementById('logout-btn').addEventListener('click', async () => {
+      await window.QRCafeAuth.signOut();
+      window.location.href = '/sign-in';
+    });
     function fmt(value) { return ((parseInt(value || 0, 10)) / 100).toFixed(0); }
     async function loadDashboard() {
       try {
@@ -36,12 +42,16 @@
           <div class="dash-stat-card"><div class="dsc-label">Completed</div><div class="dsc-val">${o.completed || 0}</div></div>
           <div class="dash-stat-card"><div class="dsc-label">Today Orders</div><div class="dsc-val">${o.today_total || 0}</div></div>`;
         const orders = data.recent || [];
-        document.getElementById('recent-orders').innerHTML = orders.length ? `<table class="data-table"><thead><tr><th>#</th><th>Table</th><th>Status</th><th>Total</th><th>Time</th></tr></thead><tbody>${orders.map(o => `<tr><td>#${o.id}</td><td>Table ${o.table_number}</td><td><span class="status-chip ${o.status}">${o.status}</span></td><td>Rs ${fmt(o.total)}</td><td>${new Date(o.created_at).toLocaleString()}</td></tr>`).join('')}</tbody></table>` : '<p class="error-msg">No orders yet.</p>';
+        document.getElementById('recent-orders').innerHTML = orders.length ? `<table class="data-table"><thead><tr><th>#</th><th>Table</th><th>Status</th><th>Total</th><th>Time</th></tr></thead><tbody>${orders.map(o => `<tr><td>#${o.order_number || o.id}</td><td>Table ${o.table_number}</td><td><span class="status-chip ${o.status}">${o.status}</span></td><td>Rs ${fmt(o.total)}</td><td>${new Date(o.created_at).toLocaleString()}</td></tr>`).join('')}</tbody></table>` : '<p class="error-msg">No orders yet.</p>';
       } catch {
         document.getElementById('stats-grid').innerHTML = '<p class="error-msg">Failed to load dashboard.</p>';
       }
     }
-    loadDashboard();
+    document.addEventListener('DOMContentLoaded', async () => {
+      const session = await window.QRCafeAuth.requireAuth();
+      if (!session) return;
+      loadDashboard();
+    });
   </script>
 </body>
 </html>

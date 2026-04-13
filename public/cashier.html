@@ -60,13 +60,18 @@
     </div>
   </main>
 
+  <script src="/vendor/firebase/firebase-app-compat.js"></script>
+  <script src="/vendor/firebase/firebase-auth-compat.js"></script>
+  <script src="/auth-client.js"></script>
   <script>
     let allOrders = [];
     let knownOrderIds = new Set();
     let activeFilter = 'active';
     let refreshTimer = null;
 
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
+      const session = await window.QRCafeAuth.requireAuth();
+      if (!session) return;
       loadOrders();
       startAutoRefresh();
       document.getElementById('refresh-btn').addEventListener('click', loadOrders);
@@ -134,11 +139,11 @@
       main.innerHTML = filtered.map(renderCard).join('');
 
       main.querySelectorAll('.order-action-btn').forEach(btn =>
-        btn.addEventListener('click', () => updateStatus(parseInt(btn.dataset.id), btn.dataset.status)));
+        btn.addEventListener('click', () => updateStatus(btn.dataset.id, btn.dataset.status)));
       main.querySelectorAll('.btn-delete-order').forEach(btn =>
-        btn.addEventListener('click', () => deleteOrder(parseInt(btn.dataset.id), btn.dataset.table)));
+        btn.addEventListener('click', () => deleteOrder(btn.dataset.id, btn.dataset.table)));
       main.querySelectorAll('.btn-wa-receipt').forEach(btn =>
-        btn.addEventListener('click', () => sendWAReceipt(parseInt(btn.dataset.id))));
+        btn.addEventListener('click', () => sendWAReceipt(btn.dataset.id)));
     }
 
     function renderCard(order) {
@@ -153,7 +158,7 @@
           <div class="order-card-header">
             <div class="order-meta">
               <span class="order-table">Table #${order.table_number}</span>
-              <span class="order-id">#${order.id}</span>
+              <span class="order-id">#${order.order_number || order.id}</span>
             </div>
             <div class="order-header-right">
               <span class="order-elapsed ${isUrgent ? 'urgent-text' : ''}">${elapsed}</span>
@@ -233,7 +238,7 @@
 
       const msg = encodeURIComponent(
         `🧾 *Order Receipt*\n` +
-        `Order #${order.id} | Table #${order.table_number}\n\n` +
+        `Order #${order.order_number || order.id} | Table #${order.table_number}\n\n` +
         `${lines}\n\n` +
         `*Total: ₹${(total / 100).toFixed(2)}*\n\n` +
         `Thank you for visiting! ☕`
@@ -272,7 +277,7 @@
             <button class="waiter-dismiss-btn" data-id="${c.id}">Done</button>
           </div>`).join("");
         list.querySelectorAll(".waiter-dismiss-btn").forEach(btn =>
-          btn.addEventListener("click", () => dismissWaiter(parseInt(btn.dataset.id))));
+          btn.addEventListener("click", () => dismissWaiter(btn.dataset.id)));
       } catch {}
     }
 

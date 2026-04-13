@@ -1,73 +1,82 @@
 ﻿import express from 'express';
-import pool from '../db.js';
-import { requireGuest, setSession, clearSession } from '../middleware/auth.js';
-import { hashPassword, verifyPassword } from '../utils/password.js';
+import { adminAuth } from '../firebase.js';
+import { ensureCafeDefaults, getCafe } from '../firebase-store.js';
+import { requireGuest, setSession, clearSession } from '../middleware/firebaseAuth.js';
 
 const router = express.Router();
 
-router.post('/signup', requireGuest, async (req, res) => {
-  try {
-    const { name, email, password } = req.body;
-    if (!name || !email || !password) {
-      return res.status(400).json({ error: 'All fields are required' });
-    }
-    if (password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
-    }
-
-    const existing = await pool.query('SELECT id FROM cafes WHERE email = $1', [email.trim().toLowerCase()]);
-    if (existing.rows.length > 0) {
-      return res.status(409).json({ error: 'Email already registered' });
-    }
-
-    const passwordHash = await hashPassword(password);
-    const result = await pool.query(
-      `INSERT INTO cafes (name, email, password_hash, plan)
-       VALUES ($1, $2, $3, 'starter')
-       RETURNING id, name, email`,
-      [name.trim(), email.trim().toLowerCase(), passwordHash]
-    );
-    const cafe = result.rows[0];
-
-    for (let tableNumber = 1; tableNumber <= 5; tableNumber += 1) {
-      await pool.query(
-        'INSERT INTO tables (cafe_id, number, label) VALUES ($1, $2, $3)',
-        [cafe.id, tableNumber, `Table ${tableNumber}`]
-      );
-    }
-
-    await pool.query('INSERT INTO themes (cafe_id) VALUES ($1) ON CONFLICT (cafe_id) DO NOTHING', [cafe.id]);
-    setSession(res, { cafeId: cafe.id, cafeName: cafe.name, email: cafe.email });
-    res.status(201).json({ message: 'Signup successful', cafe });
-  } catch (error) {
-    console.error('Signup error:', error);
-    res.status(500).json({ error: 'Signup failed' });
+async function decodeIdToken(idToken) {
+  if (!idToken) {
+    const error = new Error('Firebase ID token is required');
+    error.status = 400;
+    throw error;
   }
-});
 
-router.post('/login', requireGuest, async (req, res) => {
   try {
-    const { email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
+    return await adminAuth.verifyIdToken(idToken, true);
+  } catch {
+    const error = new Error('Invalid Firebase ID token');
+    error.status = 401;
+    throw error;
+  }
+}
+
+async function createSessionAndRespond(res, idToken, statusCode = 200) {
+  await setSession(res, idToken);
+  const decoded = await adminAuth.verifyIdToken(idToken, true);
+  const cafe = await getCafe(decoded.uid);
+  return res.status(statusCode).json({
+    message: statusCode === 201 ? 'Sign up successful' : 'Sign in successful',
+    cafe,
+  });
+}
+
+async function handleSignUp(req, res) {
+  try {
+    const { idToken, name, email } = req.body;
+    const decoded = await decodeIdToken(idToken);
+
+    if (!decoded.email) {
+      return res.status(400).json({ error: 'Firebase account must include an email address' });
     }
 
-    const result = await pool.query('SELECT id, name, email, password_hash FROM cafes WHERE email = $1', [email.trim().toLowerCase()]);
-    if (result.rows.length === 0) {
-      return res.status(401).json({ error: 'Invalid email or password' });
-    }
+    await ensureCafeDefaults(
+      decoded.uid,
+      name || decoded.name || decoded.email.split('@')[0],
+      email || decoded.email
+    );
 
-    const cafe = result.rows[0];
-    const valid = await verifyPassword(password, cafe.password_hash);
-    if (!valid) {
-      return res.status(401).json({ error: 'Invalid email or password' });
-    }
-
-    setSession(res, { cafeId: cafe.id, cafeName: cafe.name, email: cafe.email });
-    res.json({ message: 'Login successful', cafe: { id: cafe.id, name: cafe.name, email: cafe.email } });
+    return createSessionAndRespond(res, idToken, 201);
   } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ error: 'Login failed' });
+    console.error('Sign-up error:', error);
+    res.status(error.status || 500).json({ error: error.message || 'Sign up failed' });
+  }
+}
+
+async function handleSignIn(req, res) {
+  try {
+    const { idToken } = req.body;
+    const decoded = await decodeIdToken(idToken);
+    await ensureCafeDefaults(decoded.uid, decoded.name || decoded.email?.split('@')[0], decoded.email);
+    return createSessionAndRespond(res, idToken);
+  } catch (error) {
+    console.error('Sign-in error:', error);
+    res.status(error.status || 500).json({ error: error.message || 'Sign in failed' });
+  }
+}
+
+router.post(['/sign-up', '/signup'], requireGuest, handleSignUp);
+router.post(['/sign-in', '/login'], requireGuest, handleSignIn);
+
+router.post('/session', async (req, res) => {
+  try {
+    const { idToken } = req.body;
+    const decoded = await decodeIdToken(idToken);
+    await ensureCafeDefaults(decoded.uid, decoded.name || decoded.email?.split('@')[0], decoded.email);
+    return createSessionAndRespond(res, idToken);
+  } catch (error) {
+    console.error('Session sync error:', error);
+    res.status(error.status || 500).json({ error: error.message || 'Session sync failed' });
   }
 });
 
@@ -76,9 +85,14 @@ router.post('/logout', (req, res) => {
   res.json({ message: 'Logged out' });
 });
 
-router.get('/me', (req, res) => {
+router.get('/me', async (req, res) => {
   if (!req.session.cafeId) return res.status(401).json({ error: 'Not authenticated' });
-  res.json({ cafeId: req.session.cafeId, cafeName: req.session.cafeName, email: req.session.email });
+  const cafe = await getCafe(req.session.cafeId);
+  res.json({
+    cafeId: req.session.cafeId,
+    cafeName: cafe?.name || 'Our Cafe',
+    email: cafe?.email || req.session.email || '',
+  });
 });
 
 router.get('/default', (req, res) => {

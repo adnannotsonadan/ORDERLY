@@ -60,7 +60,7 @@ export function clearSession(res) {
 
 export function requireAuth(req, res, next) {
   if (!req.session.cafeId) {
-    if ((req.headers.accept || '').includes('text/html')) return res.redirect('/login');
+    if ((req.headers.accept || '').includes('text/html')) return res.redirect('/sign-in');
     return res.status(401).json({ error: 'Authentication required' });
   }
   next();
