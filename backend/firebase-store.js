@@ -1,4 +1,4 @@
-import { adminAuth, firestore, FieldValue, Timestamp } from './firebase.js';
+import { adminAuth, firestore, FieldValue, Timestamp, hasFirebaseAdminConfig } from './firebase.js';
 
 export const DEFAULT_THEME = {
   brandColor: '#c8773a',
@@ -10,12 +10,32 @@ export const DEFAULT_THEME = {
   logoUrl: '',
 };
 
+const TEAM_ROLES = new Set(['owner', 'admin', 'cashier', 'waiter']);
+
+function normalizePhone(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (digits.length < 10) return '';
+  return digits.slice(-10);
+}
+
 function cafesCollection() {
   return firestore.collection('cafes');
 }
 
+function usersCollection() {
+  return firestore.collection('users');
+}
+
+function customersCollection() {
+  return firestore.collection('customers');
+}
+
 function cafeRef(cafeId) {
   return cafesCollection().doc(String(cafeId));
+}
+
+function userRef(uid) {
+  return usersCollection().doc(String(uid));
 }
 
 function menuCollection(cafeId) {
@@ -34,12 +54,16 @@ function waiterCallsCollection(cafeId) {
   return cafeRef(cafeId).collection('waiter_calls');
 }
 
-function themeRef(cafeId) {
-  return cafeRef(cafeId).collection('settings').doc('theme');
+function membersCollection(cafeId) {
+  return cafeRef(cafeId).collection('members');
+}
+
+function cafeCustomersCollection(cafeId) {
+  return cafeRef(cafeId).collection('customers');
 }
 
 function counterRef(cafeId, counterName) {
-  return cafeRef(cafeId).collection('meta').doc(`counter_${counterName}`);
+  return cafeRef(cafeId).collection('counters').doc(String(counterName));
 }
 
 function toIsoDate(value) {
@@ -83,7 +107,53 @@ function serializeCafe(doc) {
     name: data.name || 'Our Cafe',
     email: data.email || '',
     plan: data.plan || 'starter',
+    gst_number: data.gst_number || '',
+    fssai_number: data.fssai_number || '',
+    contact_phone: data.contact_phone || '',
+    address: data.address || '',
     created_at: toIsoDate(data.created_at),
+  };
+}
+
+function serializeCustomer(doc) {
+  const data = doc.data() || {};
+  return {
+    id: doc.id,
+    phone: data.phone || '',
+    name: data.name || '',
+    email: data.email || '',
+    last_order_at: toIsoDate(data.last_order_at),
+    total_orders: Number(data.total_orders || 0),
+    updated_at: toIsoDate(data.updated_at),
+  };
+}
+
+function serializeUser(doc) {
+  const data = doc.data() || {};
+  return {
+    uid: doc.id,
+    email: data.email || '',
+    display_name: data.display_name || '',
+    status: data.status || 'active',
+    default_cafe_id: data.default_cafe_id || null,
+    created_by: data.created_by || null,
+    created_at: toIsoDate(data.created_at),
+    updated_at: toIsoDate(data.updated_at),
+    last_login_at: toIsoDate(data.last_login_at),
+  };
+}
+
+function serializeMember(doc) {
+  const data = doc.data() || {};
+  return {
+    uid: doc.id,
+    email: data.email || '',
+    display_name: data.display_name || '',
+    role: data.role || 'cashier',
+    status: data.status || 'active',
+    invited_by: data.invited_by || null,
+    created_at: toIsoDate(data.created_at),
+    updated_at: toIsoDate(data.updated_at),
   };
 }
 
@@ -140,7 +210,11 @@ function serializeOrder(doc) {
     table_id: data.table_id || null,
     table_number: Number(data.table_number || 0),
     status: data.status || 'pending',
+    source: data.source || 'dine_in',
     whatsapp_number: data.whatsapp_number || '',
+    customer_name: data.customer_name || '',
+    customer_email: data.customer_email || '',
+    billing_status: data.billing_status || 'unbilled',
     items,
     total_price: totalPrice,
     created_at: toIsoDate(data.created_at),
@@ -165,6 +239,51 @@ export async function getCafe(cafeId) {
   return serializeCafe(snapshot);
 }
 
+export async function getUserProfile(uid) {
+  if (!uid) return null;
+  const snapshot = await userRef(uid).get();
+  if (!snapshot.exists) return null;
+  return serializeUser(snapshot);
+}
+
+export async function ensureUserProfile({ uid, email, displayName, createdBy = null }) {
+  const ref = userRef(uid);
+  const snapshot = await ref.get();
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  const resolvedDisplayName = String(displayName || '').trim() || cafeNameFromEmail(normalizedEmail);
+
+  if (!snapshot.exists) {
+    await ref.set({
+      email: normalizedEmail,
+      display_name: resolvedDisplayName,
+      status: 'active',
+      default_cafe_id: null,
+      created_by: createdBy,
+      created_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
+    });
+    return getUserProfile(uid);
+  }
+
+  const current = snapshot.data() || {};
+  const updates = { updated_at: FieldValue.serverTimestamp() };
+  if (normalizedEmail && normalizedEmail !== current.email) updates.email = normalizedEmail;
+  if (resolvedDisplayName && resolvedDisplayName !== current.display_name) updates.display_name = resolvedDisplayName;
+  if (!current.status) updates.status = 'active';
+  if (current.default_cafe_id === undefined) updates.default_cafe_id = null;
+
+  await ref.set(updates, { merge: true });
+  return getUserProfile(uid);
+}
+
+export async function markUserLogin(uid) {
+  if (!uid) return;
+  await userRef(uid).set({
+    last_login_at: FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
+  }, { merge: true });
+}
+
 export async function ensureCafeProfile({ cafeId, name, email, plan = 'starter' }) {
   const ref = cafeRef(cafeId);
   const snapshot = await ref.get();
@@ -174,7 +293,14 @@ export async function ensureCafeProfile({ cafeId, name, email, plan = 'starter' 
     await ref.set({
       name: resolvedName,
       email: String(email || '').trim().toLowerCase(),
+      owner_uid: String(cafeId),
       plan,
+      brandColor: DEFAULT_THEME.brandColor,
+      bgColor: DEFAULT_THEME.bgColor,
+      surfaceColor: DEFAULT_THEME.surfaceColor,
+      textColor: DEFAULT_THEME.textColor,
+      fontFamily: DEFAULT_THEME.fontFamily,
+      logoUrl: DEFAULT_THEME.logoUrl,
       created_at: FieldValue.serverTimestamp(),
       updated_at: FieldValue.serverTimestamp(),
     });
@@ -187,6 +313,13 @@ export async function ensureCafeProfile({ cafeId, name, email, plan = 'starter' 
   if (resolvedName && resolvedName !== current.name) updates.name = resolvedName;
   if (email && String(email).trim().toLowerCase() !== current.email) updates.email = String(email).trim().toLowerCase();
   if (!current.plan) updates.plan = plan;
+  if (!current.owner_uid) updates.owner_uid = String(cafeId);
+  if (!current.brandColor) updates.brandColor = DEFAULT_THEME.brandColor;
+  if (!current.bgColor) updates.bgColor = DEFAULT_THEME.bgColor;
+  if (!current.surfaceColor) updates.surfaceColor = DEFAULT_THEME.surfaceColor;
+  if (!current.textColor) updates.textColor = DEFAULT_THEME.textColor;
+  if (!current.fontFamily) updates.fontFamily = DEFAULT_THEME.fontFamily;
+  if (current.logoUrl === undefined) updates.logoUrl = DEFAULT_THEME.logoUrl;
 
   if (Object.keys(updates).length > 0) {
     updates.updated_at = FieldValue.serverTimestamp();
@@ -198,23 +331,24 @@ export async function ensureCafeProfile({ cafeId, name, email, plan = 'starter' 
 
 export async function ensureCafeDefaults(cafeId, fallbackName, fallbackEmail) {
   await ensureCafeProfile({ cafeId, name: fallbackName, email: fallbackEmail });
+  await ensureUserProfile({ uid: cafeId, email: fallbackEmail, displayName: fallbackName, createdBy: cafeId });
+  await membersCollection(cafeId).doc(String(cafeId)).set({
+    uid: String(cafeId),
+    email: String(fallbackEmail || '').trim().toLowerCase(),
+    display_name: fallbackName || cafeNameFromEmail(fallbackEmail),
+    role: 'owner',
+    status: 'active',
+    invited_by: null,
+    created_at: FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
+  }, { merge: true });
 
-  const [themeSnapshot, tablesSnapshot] = await Promise.all([
-    themeRef(cafeId).get(),
-    tablesCollection(cafeId).limit(1).get(),
-  ]);
+  await userRef(cafeId).set({
+    default_cafe_id: String(cafeId),
+    updated_at: FieldValue.serverTimestamp(),
+  }, { merge: true });
 
-  if (!themeSnapshot.exists) {
-    await themeRef(cafeId).set({
-      brandColor: DEFAULT_THEME.brandColor,
-      bgColor: DEFAULT_THEME.bgColor,
-      surfaceColor: DEFAULT_THEME.surfaceColor,
-      textColor: DEFAULT_THEME.textColor,
-      fontFamily: DEFAULT_THEME.fontFamily,
-      logoUrl: DEFAULT_THEME.logoUrl,
-      updated_at: FieldValue.serverTimestamp(),
-    });
-  }
+  const tablesSnapshot = await tablesCollection(cafeId).limit(1).get();
 
   if (!tablesSnapshot.empty) return;
 
@@ -232,6 +366,10 @@ export async function ensureCafeDefaults(cafeId, fallbackName, fallbackEmail) {
 }
 
 export async function bootstrapDefaultCafe() {
+  if (!hasFirebaseAdminConfig()) {
+    return { cafeId: null, cafeName: null, email: null };
+  }
+
   const email = String(process.env.DEFAULT_CAFE_EMAIL || '').trim().toLowerCase();
   const password = process.env.DEFAULT_CAFE_PASSWORD || '';
   const name = process.env.DEFAULT_CAFE_NAME || 'My Cafe';
@@ -369,44 +507,42 @@ export async function getTable(cafeId, tableId) {
 export async function getTheme(cafeId) {
   if (!cafeId) return { ...DEFAULT_THEME };
 
-  const [themeSnapshot, cafeSnapshot] = await Promise.all([
-    themeRef(cafeId).get(),
-    cafeRef(cafeId).get(),
-  ]);
-
-  const cafeName = cafeSnapshot.exists ? (cafeSnapshot.data()?.name || DEFAULT_THEME.cafeName) : DEFAULT_THEME.cafeName;
-  if (!themeSnapshot.exists) {
-    return { ...DEFAULT_THEME, cafeName };
+  const cafeSnapshot = await cafeRef(cafeId).get();
+  if (!cafeSnapshot.exists) {
+    return { ...DEFAULT_THEME };
   }
 
-  const theme = themeSnapshot.data() || {};
+  const cafe = cafeSnapshot.data() || {};
   return {
-    brandColor: theme.brandColor || DEFAULT_THEME.brandColor,
-    bgColor: theme.bgColor || DEFAULT_THEME.bgColor,
-    surfaceColor: theme.surfaceColor || DEFAULT_THEME.surfaceColor,
-    textColor: theme.textColor || DEFAULT_THEME.textColor,
-    fontFamily: theme.fontFamily || DEFAULT_THEME.fontFamily,
-    cafeName,
-    logoUrl: theme.logoUrl || '',
+    brandColor: cafe.brandColor || DEFAULT_THEME.brandColor,
+    bgColor: cafe.bgColor || DEFAULT_THEME.bgColor,
+    surfaceColor: cafe.surfaceColor || DEFAULT_THEME.surfaceColor,
+    textColor: cafe.textColor || DEFAULT_THEME.textColor,
+    fontFamily: cafe.fontFamily || DEFAULT_THEME.fontFamily,
+    cafeName: cafe.name || DEFAULT_THEME.cafeName,
+    logoUrl: cafe.logoUrl || '',
+    gstNumber: cafe.gst_number || '',
+    fssaiNumber: cafe.fssai_number || '',
+    restaurantPhone: cafe.contact_phone || '',
+    restaurantAddress: cafe.address || '',
   };
 }
 
 export async function saveTheme(cafeId, updates) {
   const nextCafeName = updates.cafeName?.trim();
-  if (nextCafeName) {
-    await cafeRef(cafeId).set({
-      name: nextCafeName,
-      updated_at: FieldValue.serverTimestamp(),
-    }, { merge: true });
-  }
-
-  await themeRef(cafeId).set({
+  const nextPhone = normalizePhone(updates.restaurantPhone);
+  await cafeRef(cafeId).set({
+    ...(nextCafeName ? { name: nextCafeName } : {}),
     brandColor: updates.brandColor || DEFAULT_THEME.brandColor,
     bgColor: updates.bgColor || DEFAULT_THEME.bgColor,
     surfaceColor: updates.surfaceColor || DEFAULT_THEME.surfaceColor,
     textColor: updates.textColor || DEFAULT_THEME.textColor,
     fontFamily: updates.fontFamily || DEFAULT_THEME.fontFamily,
     logoUrl: updates.logoUrl || '',
+    gst_number: String(updates.gstNumber || '').trim(),
+    fssai_number: String(updates.fssaiNumber || '').trim(),
+    contact_phone: nextPhone,
+    address: String(updates.restaurantAddress || '').trim(),
     updated_at: FieldValue.serverTimestamp(),
   }, { merge: true });
 
@@ -414,33 +550,273 @@ export async function saveTheme(cafeId, updates) {
 }
 
 export async function resetTheme(cafeId) {
-  await themeRef(cafeId).set({
+  await cafeRef(cafeId).set({
     brandColor: DEFAULT_THEME.brandColor,
     bgColor: DEFAULT_THEME.bgColor,
     surfaceColor: DEFAULT_THEME.surfaceColor,
     textColor: DEFAULT_THEME.textColor,
     fontFamily: DEFAULT_THEME.fontFamily,
     logoUrl: DEFAULT_THEME.logoUrl,
+    gst_number: '',
+    fssai_number: '',
+    contact_phone: '',
+    address: '',
     updated_at: FieldValue.serverTimestamp(),
   }, { merge: true });
 
   return getTheme(cafeId);
 }
 
-export async function createOrder(cafeId, { tableNumber, items, whatsappNumber }) {
-  const tableLookup = await tablesCollection(cafeId).where('number', '==', Number(tableNumber)).limit(1).get();
-  const tableId = tableLookup.empty ? null : tableLookup.docs[0].id;
+export async function getCafeMember(cafeId, uid) {
+  if (!cafeId || !uid) return null;
+  const snapshot = await membersCollection(cafeId).doc(String(uid)).get();
+  if (!snapshot.exists) return null;
+  return serializeMember(snapshot);
+}
 
-  const activeForTable = await ordersCollection(cafeId)
-    .where('table_number', '==', Number(tableNumber))
+export async function getCafeMembers(cafeId) {
+  const snapshot = await membersCollection(cafeId).get();
+  return snapshot.docs.map(serializeMember).sort((a, b) => a.display_name.localeCompare(b.display_name));
+}
+
+export async function addCafeMember(cafeId, { uid, email, displayName, role = 'cashier', addedBy }) {
+  const normalizedRole = String(role || 'cashier').toLowerCase();
+  if (!TEAM_ROLES.has(normalizedRole)) {
+    const error = new Error('Invalid role');
+    error.code = 'invalid-role';
+    throw error;
+  }
+
+  const user = await ensureUserProfile({
+    uid,
+    email,
+    displayName,
+    createdBy: addedBy || null,
+  });
+
+  if (user.status !== 'active') {
+    const error = new Error('User is not active');
+    error.code = 'user-inactive';
+    throw error;
+  }
+
+  await membersCollection(cafeId).doc(String(uid)).set({
+    uid: String(uid),
+    email: user.email,
+    display_name: user.display_name,
+    role: normalizedRole,
+    status: 'active',
+    invited_by: addedBy || null,
+    created_at: FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  if (!user.default_cafe_id) {
+    await userRef(uid).set({
+      default_cafe_id: String(cafeId),
+      updated_at: FieldValue.serverTimestamp(),
+    }, { merge: true });
+  }
+
+  return getCafeMember(cafeId, uid);
+}
+
+export async function updateCafeMember(cafeId, uid, updates) {
+  const member = await getCafeMember(cafeId, uid);
+  if (!member) return null;
+
+  const payload = { updated_at: FieldValue.serverTimestamp() };
+  if (updates.role !== undefined) {
+    const normalizedRole = String(updates.role).toLowerCase();
+    if (!TEAM_ROLES.has(normalizedRole)) {
+      const error = new Error('Invalid role');
+      error.code = 'invalid-role';
+      throw error;
+    }
+    payload.role = normalizedRole;
+  }
+  if (updates.status !== undefined) {
+    const normalizedStatus = String(updates.status).toLowerCase();
+    if (!['active', 'disabled'].includes(normalizedStatus)) {
+      const error = new Error('Invalid status');
+      error.code = 'invalid-status';
+      throw error;
+    }
+    payload.status = normalizedStatus;
+  }
+
+  await membersCollection(cafeId).doc(String(uid)).set(payload, { merge: true });
+  return getCafeMember(cafeId, uid);
+}
+
+export async function removeCafeMember(cafeId, uid) {
+  const ref = membersCollection(cafeId).doc(String(uid));
+  const snapshot = await ref.get();
+  if (!snapshot.exists) return false;
+
+  if (String(uid) === String(cafeId)) {
+    const error = new Error('Owner cannot be removed from cafe members');
+    error.code = 'owner-remove-forbidden';
+    throw error;
+  }
+
+  // Delete Firestore member doc and users doc
+  await ref.delete();
+  await usersCollection().doc(String(uid)).delete();
+
+  // Delete Firebase Auth user
+  try {
+    await adminAuth.deleteUser(uid);
+  } catch (err) {
+    // If user doesn't exist in Auth, that's fine
+    if (err.code !== 'auth/user-not-found') throw err;
+  }
+
+  return true;
+}
+
+export async function resolveAccessibleCafeId(uid, preferredCafeId = null) {
+  if (!uid) return null;
+
+  const preferred = preferredCafeId ? String(preferredCafeId) : null;
+  if (preferred) {
+    const access = await verifyCafeAccess(uid, preferred);
+    if (access.allowed) return preferred;
+  }
+
+  const ownerCafe = await cafeRef(uid).get();
+  if (ownerCafe.exists) return String(uid);
+
+  const user = await getUserProfile(uid);
+  if (user?.default_cafe_id) {
+    const access = await verifyCafeAccess(uid, user.default_cafe_id);
+    if (access.allowed) return String(user.default_cafe_id);
+  }
+
+  const membership = await firestore.collectionGroup('members')
+    .where('uid', '==', String(uid))
+    .where('status', '==', 'active')
+    .limit(1)
     .get();
+
+  if (!membership.empty) {
+    const doc = membership.docs[0];
+    return doc.ref.parent.parent?.id || null;
+  }
+
+  return null;
+}
+
+export async function verifyCafeAccess(uid, cafeId) {
+  if (!uid || !cafeId) return { allowed: false, role: null };
+
+  const cafeSnapshot = await cafeRef(cafeId).get();
+  if (!cafeSnapshot.exists) return { allowed: false, role: null };
+
+  const cafe = cafeSnapshot.data() || {};
+  if (String(cafe.owner_uid || cafeId) === String(uid) || String(cafeId) === String(uid)) {
+    return { allowed: true, role: 'owner' };
+  }
+
+  const member = await getCafeMember(cafeId, uid);
+  if (!member || member.status !== 'active') return { allowed: false, role: null };
+  return { allowed: true, role: member.role || 'cashier' };
+}
+
+export async function getGlobalCustomerProfile(phone) {
+  const normalizedPhone = normalizePhone(phone);
+  if (!normalizedPhone) return null;
+  const snapshot = await customersCollection().doc(normalizedPhone).get();
+  if (!snapshot.exists) return null;
+  return serializeCustomer(snapshot);
+}
+
+export async function getCafeCustomerProfile(cafeId, phone) {
+  const normalizedPhone = normalizePhone(phone);
+  if (!normalizedPhone || !cafeId) return null;
+  const snapshot = await cafeCustomersCollection(cafeId).doc(normalizedPhone).get();
+  if (!snapshot.exists) return null;
+  return serializeCustomer(snapshot);
+}
+
+export async function upsertGlobalCustomerProfile(phone, { name = '', email = '', cafeId = null } = {}) {
+  const normalizedPhone = normalizePhone(phone);
+  if (!normalizedPhone) return null;
+
+  const globalRef = customersCollection().doc(normalizedPhone);
+  const globalSnapshot = await globalRef.get();
+  const existing = globalSnapshot.exists ? globalSnapshot.data() || {} : {};
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  const normalizedName = String(name || '').trim();
+
+  const payload = {
+    phone: normalizedPhone,
+    name: normalizedName || existing.name || '',
+    email: normalizedEmail || existing.email || '',
+    last_order_at: FieldValue.serverTimestamp(),
+    total_orders: FieldValue.increment(1),
+    updated_at: FieldValue.serverTimestamp(),
+  };
+
+  if (!globalSnapshot.exists) {
+    payload.created_at = FieldValue.serverTimestamp();
+  }
+
+  await globalRef.set(payload, { merge: true });
+
+  if (cafeId) {
+    await cafeCustomersCollection(cafeId).doc(normalizedPhone).set({
+      phone: normalizedPhone,
+      name: payload.name,
+      email: payload.email,
+      last_order_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
+    }, { merge: true });
+  }
+
+  return getGlobalCustomerProfile(normalizedPhone);
+}
+
+export async function getOrdersByPhone(cafeId, phone, limit = 15) {
+  const normalizedPhone = normalizePhone(phone);
+  if (!normalizedPhone) return [];
+
+  const snapshot = await ordersCollection(cafeId)
+    .where('whatsapp_number', '==', normalizedPhone)
+    .orderBy('created_at', 'desc')
+    .limit(Number(limit || 15))
+    .get();
+
+  return snapshot.docs.map(serializeOrder);
+}
+
+export async function createOrder(cafeId, {
+  tableNumber,
+  items,
+  whatsappNumber,
+  customerName = '',
+  customerEmail = '',
+  source = 'dine_in',
+  billingStatus = 'unbilled',
+  status = 'pending',
+}) {
+  const normalizedSource = String(source || 'dine_in').toLowerCase();
+  const resolvedTableNumber = tableNumber ? Number(tableNumber) : null;
+  const tableLookup = resolvedTableNumber
+    ? await tablesCollection(cafeId).where('number', '==', resolvedTableNumber).limit(1).get()
+    : null;
+  const tableId = tableLookup && !tableLookup.empty ? tableLookup.docs[0].id : null;
+
+  const activeForTable = resolvedTableNumber
+    ? await ordersCollection(cafeId).where('table_number', '==', resolvedTableNumber).get()
+    : { docs: [] };
 
   const hasActiveOrder = activeForTable.docs.some((doc) => {
     const status = doc.data()?.status;
     return status === 'pending' || status === 'preparing';
   });
 
-  if (hasActiveOrder) {
+  if (resolvedTableNumber && hasActiveOrder && normalizedSource !== 'walk_in') {
     const error = new Error('This table already has an active order');
     error.code = 'active-order';
     throw error;
@@ -477,19 +853,34 @@ export async function createOrder(cafeId, { tableNumber, items, whatsappNumber }
   const totalPrice = normalizedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const orderNumber = await getNextCounterValue(cafeId, 'order');
   const ref = ordersCollection(cafeId).doc();
+  const normalizedPhone = normalizePhone(whatsappNumber);
+  const normalizedEmail = String(customerEmail || '').trim().toLowerCase();
+  const normalizedName = String(customerName || '').trim();
 
   await ref.set({
     cafe_id: String(cafeId),
     table_id: tableId,
-    table_number: Number(tableNumber),
+    table_number: resolvedTableNumber,
     order_number: orderNumber,
-    status: 'pending',
-    whatsapp_number: whatsappNumber,
+    status,
+    source: normalizedSource,
+    whatsapp_number: normalizedPhone,
+    customer_name: normalizedName,
+    customer_email: normalizedEmail,
+    billing_status: billingStatus,
     items: normalizedItems,
     total_price: totalPrice,
     created_at: FieldValue.serverTimestamp(),
     updated_at: FieldValue.serverTimestamp(),
   });
+
+  if (normalizedPhone) {
+    await upsertGlobalCustomerProfile(normalizedPhone, {
+      name: normalizedName,
+      email: normalizedEmail,
+      cafeId,
+    });
+  }
 
   return serializeOrder(await ref.get());
 }

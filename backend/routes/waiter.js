@@ -1,6 +1,6 @@
 ﻿import express from 'express';
 import { createWaiterCall, dismissWaiterCall, getWaiterCalls } from '../firebase-store.js';
-import { requireAuth, resolveCafeId } from '../middleware/firebaseAuth.js';
+import { requireAuth, requireRoles, resolveCafeId } from '../middleware/firebaseAuth.js';
 
 const router = express.Router();
 
@@ -24,12 +24,12 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.get('/', requireAuth, async (req, res) => {
+router.get('/', requireAuth, requireRoles('owner', 'admin', 'cashier', 'waiter'), async (req, res) => {
   const calls = await getWaiterCalls(req.session.cafeId);
   res.json(calls);
 });
 
-router.delete('/:id', requireAuth, async (req, res) => {
+router.delete('/:id', requireAuth, requireRoles('owner', 'admin', 'cashier', 'waiter'), async (req, res) => {
   const dismissed = await dismissWaiterCall(req.session.cafeId, req.params.id);
   if (!dismissed) return res.status(404).json({ error: 'Call not found' });
   res.json({ message: 'Dismissed' });

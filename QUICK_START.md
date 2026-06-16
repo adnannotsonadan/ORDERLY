@@ -1,166 +1,87 @@
-# Quick Start - QR Café Menu System
+# Quick Start - QR Cafe Firestore App
 
-## Installation Steps (First Time Only)
+## 1. Install packages
 
-### 1. Install Node.js Packages
 ```bash
 npm install
 ```
 
-### 2. Setup PostgreSQL Database
+## 2. Configure Firebase
 
-**Create Database:**
-```sql
-CREATE DATABASE cafe_menu;
-```
+Copy `.env.example` to `.env` and fill in:
 
-**Run Setup Script:**
-- Open pgAdmin or psql
-- Connect to `cafe_menu` database
-- Run all commands from `database_setup.sql`
+- `FIREBASE_PROJECT_ID`
+- `FIREBASE_CLIENT_EMAIL`
+- `FIREBASE_PRIVATE_KEY`
 
-**Update Password in db.js:**
-Edit line 7 in db.js:
-```javascript
-password: 'your_password', // Change to your PostgreSQL password
-```
+For browser sign-in, also set:
 
-### 3. Start the Server
+- `FIREBASE_API_KEY`
+- `FIREBASE_AUTH_DOMAIN`
+- `FIREBASE_APP_ID`
+- `FIREBASE_MESSAGING_SENDER_ID`
+- `FIREBASE_STORAGE_BUCKET`
+
+Optional starter account:
+
+- `DEFAULT_CAFE_NAME`
+- `DEFAULT_CAFE_EMAIL`
+- `DEFAULT_CAFE_PASSWORD`
+
+## 3. Start the app
+
 ```bash
 npm start
 ```
 
-Server runs on: http://localhost:3000
+App runs on `http://localhost:3000`
 
----
+## Main pages
 
-## Testing Flow (Complete Demo)
+- `/sign-up` creates a cafe owner account
+- `/sign-in` logs into the dashboard
+- `/dashboard` shows revenue and recent orders
+- `/admin` manages menu items and theme
+- `/cashier` manages active orders and waiter calls
+- `/tables` manages tables and QR codes
+- `/analytics` shows sales insights
+- `/menu?cafe_id=...&table=1` is the customer menu
 
-### Step 1: Open Scan Page (Laptop)
-http://localhost:3000/scan
+## How data is stored
 
-### Step 2: Open Menu (Phone or New Tab)
-- Scan QR code with phone, OR
-- Visit: http://localhost:3000/menu?table=1
+This project now uses Firestore only.
 
-### Step 3: Place Order (Customer)
-1. Browse menu items
-2. Click "Add to Cart" on items
-3. Click cart icon (top right)
-4. Adjust quantities
-5. Click "Place Order"
+Main collections:
 
-### Step 4: View Order (Cashier Dashboard)
-http://localhost:3000/cashier
+- `users`
+- `cafes`
+- `cafes/{cafeId}/members`
+- `cafes/{cafeId}/menu_items`
+- `cafes/{cafeId}/tables`
+- `cafes/{cafeId}/orders`
+- `cafes/{cafeId}/waiter_calls`
+- cafe root theme fields: `brandColor`, `bgColor`, `surfaceColor`, `textColor`, `fontFamily`, `logoUrl`
+- `cafes/{cafeId}/counters/order`
 
-- See new order appear
-- Click "Mark as Preparing"
-- Click "Mark as Completed"
+Team members are added under `cafes/{cafeId}/members/{uid}` after the user exists in `users/{uid}`.
 
-### Step 5: Manage Menu (Admin Dashboard)
-http://localhost:3000/admin
+## Common issues
 
-- Add new menu item
-- Edit existing item
-- Delete item
-- Toggle availability
+### Firebase Admin config error
 
----
+Check that your server-side Firebase credentials are present in `.env`.
 
-## All URLs at a Glance
+### Firebase client config error
 
-| Page | URL | Purpose |
-|------|-----|---------|
-| Home | http://localhost:3000 | Redirects to /scan |
-| QR Test | http://localhost:3000/scan | Display QR code |
-| Menu | http://localhost:3000/menu | Customer ordering |
-| Cashier | http://localhost:3000/cashier | Order management |
-| Admin | http://localhost:3000/admin | Menu management |
+Check that the browser-facing Firebase values are set in `.env`.
 
----
+### Port 3000 already in use
 
-## Common Issues & Solutions
-
-### ❌ Database Connection Error
-**Solution:** 
-1. Check PostgreSQL is running
-2. Verify password in `db.js`
-3. Ensure database `cafe_menu` exists
-
-### ❌ Port 3000 Already in Use
-**Solution:**
 ```bash
-# Find process using port 3000
 netstat -ano | findstr :3000
-
-# Kill the process (replace PID with actual number)
 taskkill /PID <PID> /F
 ```
 
-### ❌ Phone Can't Access Localhost
-**Solution:**
-1. Find your PC's IP: Run `ipconfig` in terminal
-2. Update `public/scan.html` line 27:
-   ```javascript
-   const menuUrl = 'http://YOUR_IP:3000/menu?table=1';
-   ```
+### Phone cannot open QR link
 
----
-
-## Project Files Overview
-
-```
-qr/
-├── server.js           ← Main server file
-├── db.js              ← Database config
-├── database_setup.sql ← SQL setup script
-├── package.json       ← Dependencies
-│
-├── routes/
-│   ├── menu.js       ← Menu API
-│   └── orders.js     ← Orders API
-│
-└── public/
-    ├── scan.html     ← QR page
-    ├── menu.html     ← Customer menu
-    ├── cashier.html  ← Cashier dashboard
-    ├── admin.html    ← Admin panel
-    ├── style.css     ← Styling
-    └── script.js     ← Frontend logic
-```
-
----
-
-## Database Tables
-
-### menu_items
-- id (auto)
-- name
-- price (in paise/cents)
-- description
-- available (true/false)
-
-### orders
-- id (auto)
-- table_number
-- status (pending/preparing/completed)
-- created_at
-
-### order_items
-- id (auto)
-- order_id
-- menu_item_id
-- quantity
-
----
-
-## Sample Test Data
-
-After running database_setup.sql, you'll have:
-- 8 menu items (coffee, tea, food)
-- All items available
-- Ready to test immediately!
-
----
-
-Happy Coding! 🚀
+Use your computer's local IP instead of `localhost` when testing on another device.

@@ -1,0 +1,67 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(cafeId) {
+      return isSignedIn() && request.auth.uid == cafeId;
+    }
+
+    function isActiveMember(cafeId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/cafes/$(cafeId)/members/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/cafes/$(cafeId)/members/$(request.auth.uid)).data.status == 'active';
+    }
+
+    function canManageCafe(cafeId) {
+      return isOwner(cafeId) || (
+        isActiveMember(cafeId) &&
+        get(/databases/$(database)/documents/cafes/$(cafeId)/members/$(request.auth.uid)).data.role in ['owner', 'admin']
+      );
+    }
+
+    match /users/{uid} {
+      allow read, write: if isSignedIn() && request.auth.uid == uid;
+    }
+
+    match /cafes/{cafeId} {
+      allow read, write: if isActiveMember(cafeId) || isOwner(cafeId);
+
+      match /members/{uid} {
+        allow read: if isActiveMember(cafeId) || isOwner(cafeId);
+        allow write: if canManageCafe(cafeId);
+      }
+
+      match /menu_items/{itemId} {
+        allow read: if true;
+        allow write: if canManageCafe(cafeId);
+      }
+
+      match /tables/{tableId} {
+        allow read: if true;
+        allow write: if canManageCafe(cafeId);
+      }
+
+      match /orders/{orderId} {
+        allow create: if true;
+        allow read, update, delete: if isActiveMember(cafeId) || isOwner(cafeId);
+      }
+
+      match /waiter_calls/{callId} {
+        allow create: if true;
+        allow read, update, delete: if isActiveMember(cafeId) || isOwner(cafeId);
+      }
+
+      match /counters/{docId} {
+        allow read, write: if canManageCafe(cafeId);
+      }
+
+      match /admin_logs/{logId} {
+        allow read: if canManageCafe(cafeId);
+        allow write: if canManageCafe(cafeId);
+      }
+    }
+  }
+}

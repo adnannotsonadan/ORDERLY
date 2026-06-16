@@ -2,12 +2,14 @@
   "name": "qr-cafe-menu",
   "version": "1.0.0",
   "description": "QR-based café menu ordering system for college project",
-  "main": "server.js",
+  "main": "backend/server.js",
   "type": "module",
   "scripts": {
-    "start": "node --env-file-if-exists=.env.local --env-file-if-exists=.env server.js",
-    "dev": "nodemon server.js",
-    "migrate:firebase": "node --env-file-if-exists=.env.local --env-file-if-exists=.env scripts/migrate-postgres-to-firestore.js"
+    "start": "node --env-file-if-exists=.env.local --env-file-if-exists=.env backend/server.js",
+    "dev": "nodemon --exec \"node --env-file-if-exists=.env.local --env-file-if-exists=.env\" backend/server.js",
+    "init:firestore": "node --env-file-if-exists=.env.local --env-file-if-exists=.env backend/scripts/init-firestore.js",
+    "migrate:firestore": "node --env-file-if-exists=.env.local --env-file-if-exists=.env backend/scripts/migrate-firestore-schema.js",
+    "import:menu": "node --env-file-if-exists=.env.local --env-file-if-exists=.env backend/scripts/import-menu.js"
   },
   "keywords": [
     "qr",
@@ -23,7 +25,6 @@
     "firebase": "^12.11.0",
     "firebase-admin": "^13.7.0",
     "nodemon": "^3.1.14",
-    "pg": "^8.11.3",
     "qrcode": "^1.5.3"
   }
 }

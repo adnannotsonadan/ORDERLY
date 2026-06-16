@@ -5,25 +5,27 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sign Up - QR Cafe</title>
   <link rel="stylesheet" href="style.css">
+  <script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="auth-client.js"></script>
 </head>
 <body class="auth-page">
   <div class="auth-card">
     <div class="auth-logo">Cafe</div>
     <h1 class="auth-title">Create a cafe account</h1>
-    <p class="auth-sub">Set up a new Firebase-authenticated workspace for your cafe.</p>
+    <p class="auth-sub">Set up a new restaurant workspace directly in Firebase Auth and Firestore.</p>
     <div class="field"><label>Cafe name</label><input type="text" id="name" placeholder="Brew House"></div>
     <div class="field"><label>Email address</label><input type="email" id="email" placeholder="you@cafe.com"></div>
     <div class="field"><label>Password</label><input type="password" id="password" placeholder="Minimum 6 characters"></div>
     <p class="auth-error hidden" id="error"></p>
     <button class="btn-primary auth-btn" id="sign-up-btn">Sign Up</button>
-    <p class="auth-switch">Already have a cafe account? <a href="/sign-in">Sign in</a></p>
-    <p class="auth-help">Your sign-up creates a Firebase Auth user and then starts your QR Cafe workspace.</p>
+    <p class="auth-switch">Already have a cafe account? <a href="sign-in.html">Sign in</a></p>
+    <p class="auth-help">Your sign-up creates the owner account, cafe profile, default theme, order counter, and starter tables.</p>
   </div>
-  <script src="/vendor/firebase/firebase-app-compat.js"></script>
-  <script src="/vendor/firebase/firebase-auth-compat.js"></script>
-  <script src="/auth-client.js"></script>
   <script>
-    window.QRCafeAuth.redirectIfAuthenticated();
+    window.QRCafeAuth.redirectIfAuthenticated('dashboard.html');
 
     async function submit() {
       const name = document.getElementById('name').value.trim();
@@ -37,7 +39,7 @@
 
       try {
         await window.QRCafeAuth.signUpWithEmail(name, email, password);
-        window.location.href = '/dashboard';
+        window.location.href = 'dashboard.html';
       } catch (err) {
         error.textContent = err.message || 'Sign up failed. Please try again.';
         error.classList.remove('hidden');

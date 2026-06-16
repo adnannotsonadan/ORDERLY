@@ -1,6 +1,8 @@
 import { adminAuth } from '../firebase.js';
+import { verifyCafeAccess } from '../firebase-store.js';
 
 const SESSION_COOKIE = 'qr_cafe_session';
+const CAFE_CONTEXT_COOKIE = 'qr_cafe_ctx';
 const SESSION_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 function parseCookies(header) {
@@ -16,10 +18,10 @@ function parseCookies(header) {
   return cookies;
 }
 
-function buildSession(decodedToken) {
+function buildSession(decodedToken, cafeContext) {
   return {
     uid: decodedToken.uid,
-    cafeId: decodedToken.uid,
+    cafeId: cafeContext || null,
     email: decodedToken.email || '',
   };
 }
@@ -28,19 +30,20 @@ export async function authSessionMiddleware(req, res, next) {
   try {
     const cookies = parseCookies(req.headers.cookie || '');
     const sessionCookie = cookies[SESSION_COOKIE];
+    const cafeContextCookie = cookies[CAFE_CONTEXT_COOKIE] || null;
     const authHeader = req.headers.authorization || '';
     const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
 
     if (sessionCookie) {
       const decoded = await adminAuth.verifySessionCookie(sessionCookie, true);
-      req.session = buildSession(decoded);
+      req.session = buildSession(decoded, cafeContextCookie);
       req.firebaseUser = decoded;
       return next();
     }
 
     if (bearerToken) {
       const decoded = await adminAuth.verifyIdToken(bearerToken, true);
-      req.session = buildSession(decoded);
+      req.session = buildSession(decoded, cafeContextCookie);
       req.firebaseUser = decoded;
       return next();
     }
@@ -56,27 +59,55 @@ export async function authSessionMiddleware(req, res, next) {
   }
 }
 
-export async function setSession(res, idToken) {
+export async function setSession(res, idToken, cafeId) {
   const sessionCookie = await adminAuth.createSessionCookie(idToken, { expiresIn: SESSION_AGE_MS });
-  res.setHeader(
-    'Set-Cookie',
-    `${SESSION_COOKIE}=${sessionCookie}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(SESSION_AGE_MS / 1000)}`
-  );
+  const maxAge = Math.floor(SESSION_AGE_MS / 1000);
+  const setCookies = [
+    `${SESSION_COOKIE}=${sessionCookie}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`,
+    `${CAFE_CONTEXT_COOKIE}=${encodeURIComponent(String(cafeId || ''))}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`,
+  ];
+  res.setHeader('Set-Cookie', setCookies);
 }
 
 export function clearSession(res) {
-  res.setHeader(
-    'Set-Cookie',
-    `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`
-  );
+  res.setHeader('Set-Cookie', [
+    `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`,
+    `${CAFE_CONTEXT_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`,
+  ]);
 }
 
-export function requireAuth(req, res, next) {
+export async function requireAuth(req, res, next) {
   if (!req.session.cafeId) {
     if ((req.headers.accept || '').includes('text/html')) return res.redirect('/sign-in');
     return res.status(401).json({ error: 'Authentication required' });
   }
+
+  try {
+    const access = await verifyCafeAccess(req.session.uid, req.session.cafeId);
+    if (!access.allowed) {
+      clearSession(res);
+      if ((req.headers.accept || '').includes('text/html')) return res.redirect('/sign-in');
+      return res.status(403).json({ error: 'No access to this cafe' });
+    }
+    req.session.role = access.role;
+  } catch {
+    return res.status(500).json({ error: 'Authorization check failed' });
+  }
+
   next();
+}
+
+export function requireRoles(...roles) {
+  const allowed = new Set((roles || []).map((role) => String(role || '').toLowerCase()));
+
+  return (req, res, next) => {
+    const role = String(req.session?.role || '').toLowerCase();
+    if (!role || !allowed.has(role)) {
+      if ((req.headers.accept || '').includes('text/html')) return res.redirect('/dashboard');
+      return res.status(403).json({ error: 'Insufficient role permissions' });
+    }
+    return next();
+  };
 }
 
 export function requireGuest(req, res, next) {

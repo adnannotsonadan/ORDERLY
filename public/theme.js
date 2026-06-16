@@ -1,4 +1,3 @@
-﻿// theme.js fetches per-cafe theme so public pages can be branded correctly.
 (function () {
   const DEFAULT = {
     brandColor: '#c8773a',
@@ -15,12 +14,13 @@
     return params.get('cafe_id');
   }
 
-  function themedUrl(path) {
-    const cafeId = getCafeId();
-    if (!cafeId) return path;
-    const url = new URL(path, window.location.origin);
-    url.searchParams.set('cafe_id', cafeId);
-    return url.pathname + url.search;
+  async function resolveCafeId() {
+    const fromUrl = getCafeId();
+    if (fromUrl) return fromUrl;
+    if (window.QRCafeApp && window.QRCafeApp.getCurrentCafeId) {
+      return window.QRCafeApp.getCurrentCafeId();
+    }
+    return null;
   }
 
   function hexToHsl(hex) {
@@ -103,8 +103,8 @@
 
   async function fetchAndApply() {
     try {
-      const response = await fetch(themedUrl('/api/theme'));
-      const theme = await response.json();
+      const cafeId = await resolveCafeId();
+      const theme = window.QRCafeApp ? await window.QRCafeApp.getTheme(cafeId) : { ...DEFAULT };
       window._cafeTheme = { ...DEFAULT, ...theme };
       applyTheme(window._cafeTheme);
     } catch {
@@ -114,29 +114,22 @@
   }
 
   applyTheme(DEFAULT);
-  fetchAndApply();
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', fetchAndApply);
-  }
+  window.addEventListener('load', fetchAndApply);
 
   window.CafeTheme = {
     get() {
       return window._cafeTheme || { ...DEFAULT };
     },
     async save(updates) {
-      const response = await fetch('/api/theme', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-      });
-      const next = await response.json();
+      const cafeId = await resolveCafeId();
+      const next = window.QRCafeApp ? await window.QRCafeApp.saveTheme(cafeId, updates) : { ...DEFAULT };
       window._cafeTheme = { ...DEFAULT, ...next };
       applyTheme(window._cafeTheme);
       return window._cafeTheme;
     },
     async reset() {
-      const response = await fetch('/api/theme', { method: 'DELETE' });
-      const next = await response.json();
+      const cafeId = await resolveCafeId();
+      const next = window.QRCafeApp ? await window.QRCafeApp.resetTheme(cafeId) : { ...DEFAULT };
       window._cafeTheme = { ...DEFAULT, ...next };
       applyTheme(window._cafeTheme);
       return window._cafeTheme;
@@ -144,6 +137,5 @@
     apply: applyTheme,
     DEFAULT,
     getCafeId,
-    themedUrl,
   };
 })();

@@ -1,6 +1,6 @@
 ﻿import express from 'express';
 import { DEFAULT_THEME, getTheme, resetTheme, saveTheme } from '../firebase-store.js';
-import { requireAuth, resolveCafeId } from '../middleware/firebaseAuth.js';
+import { requireAuth, requireRoles, resolveCafeId } from '../middleware/firebaseAuth.js';
 
 const router = express.Router();
 
@@ -16,7 +16,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.post('/', requireAuth, async (req, res) => {
+router.post('/', requireAuth, requireRoles('owner', 'admin'), async (req, res) => {
   try {
     const theme = await saveTheme(req.session.cafeId, req.body);
     res.json(theme);
@@ -26,7 +26,7 @@ router.post('/', requireAuth, async (req, res) => {
   }
 });
 
-router.delete('/', requireAuth, async (req, res) => {
+router.delete('/', requireAuth, requireRoles('owner', 'admin'), async (req, res) => {
   try {
     const theme = await resetTheme(req.session.cafeId);
     res.json(theme);

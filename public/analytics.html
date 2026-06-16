@@ -1,45 +1,52 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Analytics - QR Cafe</title>
   <link rel="stylesheet" href="style.css">
-  <script src="/theme.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="auth-client.js"></script>
+  <script src="theme.js"></script>
 </head>
 <body class="admin-page">
-  <header class="dash-header"><div class="dash-header-left"><img class="cafe-logo" src="" alt="logo" style="display:none;height:28px;width:28px;object-fit:contain;border-radius:6px;"><h1>Analytics</h1></div><div class="dash-header-right"><a href="/dashboard" class="header-link">Dashboard</a></div></header>
+  <header class="dash-header"><div class="dash-header-left"><img class="cafe-logo" src="" alt="logo" style="display:none;height:28px;width:28px;object-fit:contain;border-radius:6px;"><h1>Analytics</h1></div><div class="dash-header-right"><a href="dashboard.html" class="header-link">Dashboard</a></div></header>
   <main class="admin-main analytics-grid" id="analytics-root"><div class="loading-state"><div class="spinner"></div><p>Loading analytics...</p></div></main>
-  <script src="/vendor/firebase/firebase-app-compat.js"></script>
-  <script src="/vendor/firebase/firebase-auth-compat.js"></script>
-  <script src="/auth-client.js"></script>
   <script>
-    function money(value) { return 'Rs ' + ((parseInt(value || 0, 10)) / 100).toFixed(0); }
-    async function loadAnalytics() {
-      try {
-        const res = await fetch('/api/analytics');
-        const data = await res.json();
-        const bestsellers = (data.bestsellers || []).map(item => `<tr><td>${item.name}</td><td>${item.category || '-'}</td><td>${item.total_sold}</td><td>${money(item.total_revenue)}</td></tr>`).join('') || '<tr><td colspan="4">No completed sales yet.</td></tr>';
-        const hourly = (data.hourly || []).map(row => `<tr><td>${row.hour}:00</td><td>${row.count}</td></tr>`).join('') || '<tr><td colspan="2">No data yet.</td></tr>';
-        const byTable = (data.byTable || []).map(row => `<tr><td>Table ${row.table_number}</td><td>${row.order_count}</td><td>${money(row.revenue)}</td></tr>`).join('') || '<tr><td colspan="3">No data yet.</td></tr>';
-        document.getElementById('analytics-root').innerHTML = `
-          <section class="dash-stats-grid">
-            <div class="dash-stat-card"><div class="dsc-label">Today</div><div class="dsc-val">${money(data.revenue?.today)}</div></div>
-            <div class="dash-stat-card"><div class="dsc-label">This Week</div><div class="dsc-val">${money(data.revenue?.this_week)}</div></div>
-            <div class="dash-stat-card"><div class="dsc-label">This Month</div><div class="dsc-val">${money(data.revenue?.this_month)}</div></div>
-            <div class="dash-stat-card highlight"><div class="dsc-label">All Time</div><div class="dsc-val">${money(data.revenue?.all_time)}</div></div>
-          </section>
-          <section class="admin-form-card"><h2>Bestsellers</h2><table class="data-table"><thead><tr><th>Item</th><th>Category</th><th>Sold</th><th>Revenue</th></tr></thead><tbody>${bestsellers}</tbody></table></section>
-          <section class="admin-form-card"><h2>Orders by Hour</h2><table class="data-table"><thead><tr><th>Hour</th><th>Orders</th></tr></thead><tbody>${hourly}</tbody></table></section>
-          <section class="admin-form-card"><h2>Table Performance</h2><table class="data-table"><thead><tr><th>Table</th><th>Orders</th><th>Revenue</th></tr></thead><tbody>${byTable}</tbody></table></section>`;
-      } catch {
-        document.getElementById('analytics-root').innerHTML = '<p class="error-msg">Failed to load analytics.</p>';
-      }
+    let unsubscribeOrders = null;
+
+    function money(value) {
+      return 'Rs ' + ((parseInt(value || 0, 10)) / 100).toFixed(0);
     }
+
+    function renderAnalytics(orders) {
+      const data = window.QRCafeApp.computeAnalyticsFromOrders(orders || []);
+      const bestsellers = (data.bestsellers || []).map(item => `<tr><td>${item.name}</td><td>${item.category || '-'}</td><td>${item.total_sold}</td><td>${money(item.total_revenue)}</td></tr>`).join('') || '<tr><td colspan="4">No completed sales yet.</td></tr>';
+      const hourly = (data.hourly || []).map(row => `<tr><td>${row.hour}:00</td><td>${row.count}</td></tr>`).join('') || '<tr><td colspan="2">No data yet.</td></tr>';
+      const byTable = (data.byTable || []).map(row => `<tr><td>Table ${row.table_number}</td><td>${row.order_count}</td><td>${money(row.revenue)}</td></tr>`).join('') || '<tr><td colspan="3">No data yet.</td></tr>';
+      document.getElementById('analytics-root').innerHTML = `
+        <section class="dash-stats-grid">
+          <div class="dash-stat-card"><div class="dsc-label">Today</div><div class="dsc-val">${money(data.revenue?.today)}</div></div>
+          <div class="dash-stat-card"><div class="dsc-label">This Week</div><div class="dsc-val">${money(data.revenue?.this_week)}</div></div>
+          <div class="dash-stat-card"><div class="dsc-label">This Month</div><div class="dsc-val">${money(data.revenue?.this_month)}</div></div>
+          <div class="dash-stat-card highlight"><div class="dsc-label">All Time</div><div class="dsc-val">${money(data.revenue?.all_time)}</div></div>
+        </section>
+        <section class="admin-form-card"><h2>Bestsellers</h2><table class="data-table"><thead><tr><th>Item</th><th>Category</th><th>Sold</th><th>Revenue</th></tr></thead><tbody>${bestsellers}</tbody></table></section>
+        <section class="admin-form-card"><h2>Orders by Hour</h2><table class="data-table"><thead><tr><th>Hour</th><th>Orders</th></tr></thead><tbody>${hourly}</tbody></table></section>
+        <section class="admin-form-card"><h2>Table Performance</h2><table class="data-table"><thead><tr><th>Table</th><th>Orders</th><th>Revenue</th></tr></thead><tbody>${byTable}</tbody></table></section>`;
+    }
+
     document.addEventListener('DOMContentLoaded', async () => {
-      const session = await window.QRCafeAuth.requireAuth();
+      const session = await window.QRCafeAuth.requireRoleAccess(['owner', 'admin', 'cashier'], 'dashboard.html');
       if (!session) return;
-      loadAnalytics();
+      unsubscribeOrders = await window.QRCafeApp.subscribeOrders(session.cafeId, renderAnalytics);
+    });
+
+    window.addEventListener('beforeunload', () => {
+      if (typeof unsubscribeOrders === 'function') unsubscribeOrders();
     });
   </script>
 </body>

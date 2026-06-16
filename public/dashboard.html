@@ -1,56 +1,73 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard - QR Cafe</title>
   <link rel="stylesheet" href="style.css">
-  <script src="/theme.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="auth-client.js"></script>
+  <script src="theme.js"></script>
 </head>
 <body class="admin-page">
   <header class="dash-header">
     <div class="dash-header-left"><img class="cafe-logo" src="" alt="logo" style="display:none;height:28px;width:28px;object-fit:contain;border-radius:6px;"><h1 class="cafe-name-text">Dashboard</h1></div>
-    <div class="dash-header-right"><nav class="dash-nav"><a href="/admin" class="dash-nav-link">Menu</a><a href="/cashier" class="dash-nav-link">Cashier</a><a href="/tables" class="dash-nav-link">Tables</a><a href="/analytics" class="dash-nav-link">Analytics</a></nav><button class="btn-ghost" id="logout-btn">Logout</button></div>
+    <div class="dash-header-right"><nav class="dash-nav" id="dash-nav"><a href="admin.html" class="dash-nav-link">Menu</a><a href="cashier.html" class="dash-nav-link">Cashier</a><a href="tables.html" class="dash-nav-link">Tables</a><a href="analytics.html" class="dash-nav-link">Analytics</a></nav><button class="btn-ghost" id="logout-btn">Logout</button></div>
   </header>
   <main class="admin-main">
     <section class="dash-stats-grid" id="stats-grid"><div class="loading-state"><div class="spinner"></div><p>Loading stats...</p></div></section>
-    <section class="admin-form-card"><h2>Quick Actions</h2><div class="quick-links"><a href="/admin" class="quick-link-card"><div class="ql-label">Menu Management</div><div class="ql-sub">Add, edit, and group items</div></a><a href="/cashier" class="quick-link-card"><div class="ql-label">Cashier</div><div class="ql-sub">Track live orders and waiter calls</div></a><a href="/tables" class="quick-link-card"><div class="ql-label">Tables & QR</div><div class="ql-sub">Create tables and print QR codes</div></a><a href="/analytics" class="quick-link-card"><div class="ql-label">Analytics</div><div class="ql-sub">Revenue and bestseller trends</div></a></div></section>
+    <section class="admin-form-card"><h2>Quick Actions</h2><div class="quick-links"><a href="admin.html" class="quick-link-card"><div class="ql-label">Menu Management</div><div class="ql-sub">Add, edit, and group items</div></a><a href="cashier.html" class="quick-link-card"><div class="ql-label">Cashier</div><div class="ql-sub">Track live orders and waiter calls</div></a><a href="tables.html" class="quick-link-card"><div class="ql-label">Tables & QR</div><div class="ql-sub">Create tables and print QR codes</div></a><a href="analytics.html" class="quick-link-card"><div class="ql-label">Analytics</div><div class="ql-sub">Revenue and bestseller trends</div></a></div></section>
     <section class="admin-form-card"><h2>Recent Orders</h2><div id="recent-orders"><div class="loading-state"><div class="spinner"></div></div></div></section>
   </main>
-  <script src="/vendor/firebase/firebase-app-compat.js"></script>
-  <script src="/vendor/firebase/firebase-auth-compat.js"></script>
-  <script src="/auth-client.js"></script>
   <script>
+    let unsubscribeOrders = null;
+
     document.getElementById('logout-btn').addEventListener('click', async () => {
       await window.QRCafeAuth.signOut();
-      window.location.href = '/sign-in';
+      window.location.href = 'sign-in.html';
     });
-    function fmt(value) { return ((parseInt(value || 0, 10)) / 100).toFixed(0); }
-    async function loadDashboard() {
-      try {
-        const res = await fetch('/api/analytics');
-        const data = await res.json();
-        const r = data.revenue || {};
-        const o = data.orders || {};
-        document.getElementById('stats-grid').innerHTML = `
-          <div class="dash-stat-card"><div class="dsc-label">Today Revenue</div><div class="dsc-val">Rs ${fmt(r.today)}</div></div>
-          <div class="dash-stat-card"><div class="dsc-label">This Week</div><div class="dsc-val">Rs ${fmt(r.this_week)}</div></div>
-          <div class="dash-stat-card"><div class="dsc-label">This Month</div><div class="dsc-val">Rs ${fmt(r.this_month)}</div></div>
-          <div class="dash-stat-card highlight"><div class="dsc-label">All Time</div><div class="dsc-val">Rs ${fmt(r.all_time)}</div></div>
-          <div class="dash-stat-card"><div class="dsc-label">Pending</div><div class="dsc-val">${o.pending || 0}</div></div>
-          <div class="dash-stat-card"><div class="dsc-label">Preparing</div><div class="dsc-val">${o.preparing || 0}</div></div>
-          <div class="dash-stat-card"><div class="dsc-label">Completed</div><div class="dsc-val">${o.completed || 0}</div></div>
-          <div class="dash-stat-card"><div class="dsc-label">Today Orders</div><div class="dsc-val">${o.today_total || 0}</div></div>`;
-        const orders = data.recent || [];
-        document.getElementById('recent-orders').innerHTML = orders.length ? `<table class="data-table"><thead><tr><th>#</th><th>Table</th><th>Status</th><th>Total</th><th>Time</th></tr></thead><tbody>${orders.map(o => `<tr><td>#${o.order_number || o.id}</td><td>Table ${o.table_number}</td><td><span class="status-chip ${o.status}">${o.status}</span></td><td>Rs ${fmt(o.total)}</td><td>${new Date(o.created_at).toLocaleString()}</td></tr>`).join('')}</tbody></table>` : '<p class="error-msg">No orders yet.</p>';
-      } catch {
-        document.getElementById('stats-grid').innerHTML = '<p class="error-msg">Failed to load dashboard.</p>';
-      }
+
+    function fmt(value) {
+      return ((parseInt(value || 0, 10)) / 100).toFixed(0);
     }
+
+    function renderDashboard(orders) {
+      const data = window.QRCafeApp.computeAnalyticsFromOrders(orders || []);
+      const r = data.revenue || {};
+      const o = data.orders || {};
+      document.getElementById('stats-grid').innerHTML = `
+        <div class="dash-stat-card"><div class="dsc-label">Today Revenue</div><div class="dsc-val">Rs ${fmt(r.today)}</div></div>
+        <div class="dash-stat-card"><div class="dsc-label">This Week</div><div class="dsc-val">Rs ${fmt(r.this_week)}</div></div>
+        <div class="dash-stat-card"><div class="dsc-label">This Month</div><div class="dsc-val">Rs ${fmt(r.this_month)}</div></div>
+        <div class="dash-stat-card highlight"><div class="dsc-label">All Time</div><div class="dsc-val">Rs ${fmt(r.all_time)}</div></div>
+        <div class="dash-stat-card"><div class="dsc-label">Pending</div><div class="dsc-val">${o.pending || 0}</div></div>
+        <div class="dash-stat-card"><div class="dsc-label">Preparing</div><div class="dsc-val">${o.preparing || 0}</div></div>
+        <div class="dash-stat-card"><div class="dsc-label">Completed</div><div class="dsc-val">${o.completed || 0}</div></div>
+        <div class="dash-stat-card"><div class="dsc-label">Today Orders</div><div class="dsc-val">${o.today_total || 0}</div></div>`;
+
+      const recent = data.recent || [];
+      document.getElementById('recent-orders').innerHTML = recent.length
+        ? `<table class="data-table"><thead><tr><th>#</th><th>Table</th><th>Status</th><th>Total</th><th>Time</th></tr></thead><tbody>${recent.map((order) => `<tr><td>#${order.order_number || order.id}</td><td>Table ${order.table_number}</td><td><span class="status-chip ${order.status}">${order.status}</span></td><td>Rs ${fmt(order.total)}</td><td>${new Date(order.created_at).toLocaleString()}</td></tr>`).join('')}</tbody></table>`
+        : '<p class="error-msg">No orders yet.</p>';
+    }
+
     document.addEventListener('DOMContentLoaded', async () => {
-      const session = await window.QRCafeAuth.requireAuth();
+      const session = await window.QRCafeAuth.requireRoleAccess(['owner', 'admin', 'cashier', 'waiter'], 'sign-in.html');
       if (!session) return;
-      loadDashboard();
+      if (session.role === 'cashier') {
+        document.getElementById('dash-nav').innerHTML = '<a href="cashier.html" class="dash-nav-link">Cashier</a><a href="analytics.html" class="dash-nav-link">Analytics</a>';
+      }
+      if (session.role === 'waiter') {
+        document.getElementById('dash-nav').innerHTML = '<a href="cashier.html" class="dash-nav-link">Orders</a>';
+      }
+      unsubscribeOrders = await window.QRCafeApp.subscribeOrders(session.cafeId, renderDashboard);
+    });
+
+    window.addEventListener('beforeunload', () => {
+      if (typeof unsubscribeOrders === 'function') unsubscribeOrders();
     });
   </script>
 </body>

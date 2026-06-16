@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SRS - QR Cafe Firestore App</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 0;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      background: #fff;
+      color: #000;
+      font-family: Calibri, Arial, sans-serif;
+      font-size: 11.04pt;
+      line-height: 1.15;
+    }
+
+    .page {
+      width: 210mm;
+      height: 297mm;
+      padding: 19mm;
+      page-break-after: always;
+      break-after: page;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .page:last-child {
+      page-break-after: auto;
+    }
+
+    .title {
+      text-align: center;
+      font-size: 12pt;
+      font-weight: 700;
+      text-decoration: underline;
+      margin: 0 0 14px;
+    }
+
+    .project-title {
+      text-align: center;
+      font-size: 12pt;
+      font-weight: 700;
+      margin: 0 0 12px;
+    }
+
+    .meta {
+      text-align: center;
+      font-size: 12pt;
+      font-weight: 700;
+      margin: 0 0 22px;
+    }
+
+    h1,
+    h2,
+    h3 {
+      font-size: 12pt;
+      line-height: 1.22;
+      margin: 0 0 6px;
+      font-weight: 700;
+    }
+
+    h2 {
+      margin-top: 10px;
+    }
+
+    h3 {
+      font-size: 11.04pt;
+      margin-top: 9px;
+    }
+
+    p {
+      margin: 0 0 6px;
+      text-align: left;
+    }
+
+    ul {
+      margin: 0 0 6px 18px;
+      padding: 0;
+    }
+
+    li {
+      margin: 0 0 2px;
+    }
+
+    .section-gap {
+      margin-top: 16px;
+    }
+
+    .label {
+      font-weight: 700;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0 0 11px;
+      font-size: 11.04pt;
+    }
+
+    th,
+    td {
+      border: 1px solid #000;
+      padding: 4px 7px;
+      vertical-align: top;
+      text-align: left;
+    }
+
+    th {
+      font-weight: 700;
+      background: #f2f2f2;
+    }
+
+    .compact-table td,
+    .compact-table th {
+      padding: 3px 7px;
+    }
+
+    .architecture {
+      margin-top: 8px;
+      border: 1px solid #9aa7b7;
+      padding: 7px;
+      font-size: 7.6pt;
+      color: #182235;
+    }
+
+    .arch-title {
+      text-align: center;
+      font-size: 13pt;
+      font-weight: 700;
+      color: #12345b;
+      margin-bottom: 7px;
+    }
+
+    .arch-grid {
+      display: grid;
+      grid-template-columns: 0.78fr 1.22fr 1.42fr 1.22fr;
+      gap: 6px;
+      align-items: start;
+    }
+
+    .arch-box {
+      border: 1.5px solid #42657e;
+      border-radius: 5px;
+      padding: 6px;
+      min-height: 102px;
+      background: #fff;
+    }
+
+    .arch-box.frontend {
+      background: #edf5ff;
+    }
+
+    .arch-box.backend {
+      background: #edf9ee;
+    }
+
+    .arch-box.services {
+      background: #f7fbff;
+    }
+
+    .arch-box.users {
+      background: #fff;
+    }
+
+    .arch-head {
+      font-weight: 700;
+      text-align: center;
+      color: #17395d;
+      margin-bottom: 5px;
+    }
+
+    .arch-pill {
+      border: 1px solid #a6bdd0;
+      border-radius: 4px;
+      background: #fff;
+      padding: 3px 5px;
+      margin: 3px 0;
+      text-align: center;
+      font-weight: 600;
+    }
+
+    .arch-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+    }
+
+    .arch-flow {
+      margin-top: 8px;
+      border: 1px solid #d5b44d;
+      border-radius: 5px;
+      padding: 6px;
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 4px;
+      text-align: center;
+      background: #fffdf5;
+    }
+
+    .flow-step {
+      border: 1px solid #cfd8e3;
+      border-radius: 4px;
+      padding: 4px 3px;
+      background: #fff;
+      min-height: 32px;
+      font-weight: 600;
+    }
+
+    .database-band {
+      margin-top: 6px;
+      border: 1.5px solid #7b5e9b;
+      border-radius: 5px;
+      padding: 6px;
+      background: #faf5ff;
+    }
+
+    .collection-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 4px;
+      margin-top: 4px;
+    }
+
+    .collection-grid div {
+      border: 1px solid #b69ad1;
+      border-radius: 4px;
+      background: #fff;
+      text-align: center;
+      padding: 4px;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <section class="page">
+    <p class="title">SRS(Software Requirement Specifications)</p>
+    <p class="project-title">QR Cafe Firestore App</p>
+    <p class="meta">By: [Student Name]<br>Adm No.: [Admission No.]</p>
+
+    <h1>1. Introduction</h1>
+    <h2>1.1 Purpose</h2>
+    <p>The purpose of this project is to develop a web-based QR cafe ordering platform that helps cafe owners and customers manage table-based food ordering efficiently. Customers can scan a QR code placed on a table, browse the menu, place orders, and call a waiter without waiting for manual service. Cafe owners and staff can manage menu items, tables, orders, themes, cashier workflows, and analytics from a centralized dashboard.</p>
+
+    <h2>1.2 Scope</h2>
+    <p>The QR Cafe Firestore App is a full-stack web application that allows users to:</p>
+    <ul>
+      <li>Register and authenticate cafe owners securely.</li>
+      <li>Create and manage cafe tables with QR codes.</li>
+      <li>Allow customers to open a table-specific digital menu by scanning a QR code.</li>
+      <li>Place food orders directly from the customer menu page.</li>
+      <li>Call a waiter from the table interface.</li>
+      <li>Manage menu items, table data, theme settings, cashier orders, and sales analytics.</li>
+      <li>Store cafe data using Firebase Authentication and Cloud Firestore.</li>
+    </ul>
+    <p>The system provides a digital ordering experience for cafes, reduces manual order handling, and improves service speed by connecting customer actions directly to cafe staff workflows.</p>
+
+    <h2>1.3 Objectives</h2>
+    <p>The main objectives of the QR Cafe Firestore App are:</p>
+    <ul>
+      <li>Provide a simple QR-based ordering system for cafes and restaurants.</li>
+      <li>Enable table-wise customer ordering without requiring a mobile app installation.</li>
+      <li>Allow cafe owners to manage menus, tables, and order status from a web dashboard.</li>
+      <li>Support waiter call requests and active order monitoring for cashier staff.</li>
+      <li>Use Firestore to store cafe-specific menu items, tables, orders, waiter calls, and theme data.</li>
+      <li>Improve operational efficiency, order accuracy, and customer convenience.</li>
+    </ul>
+
+    <h2>2. Description</h2>
+    <h3>2.1 Product Perspective</h3>
+    <p>The project is a web-based application developed using Node.js, Express, Firebase Authentication, Cloud Firestore, and vanilla HTML, CSS, and JavaScript. It provides public customer pages for ordering and protected owner/admin pages for cafe management.</p>
+  </section>
+
+  <section class="page">
+    <p><span class="label">Main Tech Stacks include:</span></p>
+    <ul>
+      <li>HTML, CSS, and vanilla JavaScript for the frontend user interface.</li>
+      <li>Node.js and Express.js for backend server and API handling.</li>
+      <li>Firebase Authentication for secure cafe owner sign-up and sign-in.</li>
+      <li>Cloud Firestore for menu, table, order, waiter call, theme, and analytics data.</li>
+      <li>Firebase Admin SDK for server-side authentication and Firestore operations.</li>
+      <li>qrcode package for generating QR codes for cafe tables.</li>
+      <li>Environment-based Firebase configuration for server and browser setup.</li>
+    </ul>
+    <p>The platform provides a centralized system for cafe owners, cashier staff, and customers to manage menu browsing, table-based ordering, waiter assistance, and order tracking.</p>
+
+    <h2>2.2 Product Functions</h2>
+    <p><span class="label">Main Functions:</span></p>
+    <ul>
+      <li>Cafe owner registration and authentication.</li>
+      <li>Dashboard for high-level cafe statistics.</li>
+      <li>Menu item creation, update, listing, and deletion.</li>
+      <li>Table setup and QR code generation.</li>
+      <li>Customer menu page for table-specific ordering.</li>
+      <li>Cashier page for active orders and waiter calls.</li>
+    </ul>
+    <p><span class="label">Smart Features:</span></p>
+    <ul>
+      <li>Automatic QR code generation for each cafe table.</li>
+      <li>Theme customization for the customer menu experience.</li>
+      <li>Order tracking by cafe and table number.</li>
+      <li>Waiter call management for faster service response.</li>
+      <li>Analytics views for sales and cafe activity insights.</li>
+    </ul>
+
+    <h2>3. System Users</h2>
+    <p><span class="label">Cafe Owner/Admin</span> - Account setup, menu management, table management, theme settings, and analytics.</p>
+    <p><span class="label">Cashier/Staff</span> - Active order monitoring, order status updates, and waiter call handling.</p>
+    <p><span class="label">Customer</span> - Scans a table QR code, browses the menu, places orders, and calls a waiter.</p>
+
+    <h2>4. Functional Requirements</h2>
+    <h3>4.1 Authentication Module</h3>
+    <ul>
+      <li>Cafe owner sign-up and sign-in.</li>
+      <li>Secure session creation and logout.</li>
+      <li>Route protection for dashboard, admin, cashier, tables, and analytics pages.</li>
+      <li>Firebase-based identity verification for protected API access.</li>
+    </ul>
+    <p><span class="label">Technologies Used:</span> Firebase Authentication, Firebase Admin SDK, Node.js, Express.js</p>
+
+    <h3>4.2 Menu Management Module</h3>
+    <ul>
+      <li>Add, update, view, and delete cafe menu items.</li>
+      <li>Store menu data under the authenticated cafe record.</li>
+      <li>Display active menu items to customers on the table menu page.</li>
+      <li>Support item details used by ordering and cashier workflows.</li>
+    </ul>
+    <p><span class="label">Technologies Used:</span> HTML, CSS, JavaScript, Express.js, Cloud Firestore</p>
+  </section>
+
+  <section class="page">
+    <h3>4.3 Table and QR Management Module</h3>
+    <ul>
+      <li>Create and manage table records for each cafe.</li>
+      <li>Generate QR codes linked to the customer menu route.</li>
+      <li>Use URLs such as /menu?cafe_id=...&amp;table=1 for table-specific access.</li>
+      <li>Allow cafe owners to prepare QR codes for physical table placement.</li>
+    </ul>
+    <p><span class="label">Technologies Used:</span> qrcode, Express.js, Cloud Firestore, JavaScript</p>
+
+    <h3>4.4 Customer Ordering Module</h3>
+    <ul>
+      <li>Open a cafe menu after scanning a table QR code.</li>
+      <li>Browse available menu items from the selected cafe.</li>
+      <li>Add items to an order and submit the order for the selected table.</li>
+      <li>Store order details for staff and cashier review.</li>
+    </ul>
+    <p><span class="label">Technologies Used:</span> HTML, CSS, JavaScript, Express.js, Cloud Firestore</p>
+
+    <h3>4.5 Cashier and Order Monitoring Module</h3>
+    <ul>
+      <li>Display active customer orders for the cafe.</li>
+      <li>Allow staff to update or remove orders based on workflow needs.</li>
+      <li>Refresh active orders periodically for near real-time monitoring.</li>
+      <li>Support cashier staff in tracking table requests and order activity.</li>
+    </ul>
+    <p><span class="label">Technologies Used:</span> JavaScript, Express.js, Cloud Firestore</p>
+
+    <h3>4.6 Waiter Call Module</h3>
+    <ul>
+      <li>Allow customers to call a waiter from the menu page.</li>
+      <li>Store waiter call requests with cafe and table information.</li>
+      <li>Display active waiter calls on the cashier/staff page.</li>
+      <li>Allow staff to clear waiter requests after service.</li>
+    </ul>
+    <p><span class="label">Technologies Used:</span> JavaScript, Express.js, Cloud Firestore</p>
+
+    <h3>4.7 Theme Customization Module</h3>
+    <ul>
+      <li>Allow cafe owners to customize theme settings for the customer menu.</li>
+      <li>Store theme configuration inside the cafe settings document.</li>
+      <li>Apply saved visual settings to the customer-facing menu page.</li>
+      <li>Support branding and presentation for each cafe.</li>
+    </ul>
+    <p><span class="label">Technologies Used:</span> HTML, CSS, JavaScript, Cloud Firestore</p>
+  </section>
+
+  <section class="page">
+    <h3>4.8 Analytics Module</h3>
+    <ul>
+      <li>Display sales and order-related insights for cafe owners.</li>
+      <li>Fetch cafe-specific analytics through the backend API.</li>
+      <li>Help owners understand activity from orders and menu usage.</li>
+      <li>Support business monitoring from the analytics page.</li>
+    </ul>
+    <p><span class="label">Technologies Used:</span> Express.js, JavaScript, Cloud Firestore</p>
+
+    <h2>5. Non-Functional Requirements</h2>
+    <h3>5.1 Performance</h3>
+    <ul>
+      <li>Fast loading customer menu pages for QR-based ordering.</li>
+      <li>Efficient API responses for menu, order, table, waiter, and theme requests.</li>
+      <li>Periodic refresh support for cashier order monitoring.</li>
+      <li>Firestore queries scoped by cafe to keep data access efficient.</li>
+    </ul>
+
+    <h3>5.2 Security</h3>
+    <ul>
+      <li>Firebase Authentication for cafe owner accounts.</li>
+      <li>Protected owner routes and session validation.</li>
+      <li>Server-side Firebase Admin verification for trusted operations.</li>
+      <li>Environment variables used for sensitive Firebase configuration values.</li>
+    </ul>
+
+    <h3>5.3 Usability</h3>
+    <ul>
+      <li>Simple customer menu interface opened directly from a QR scan.</li>
+      <li>Separate pages for owner, cashier, table setup, and analytics workflows.</li>
+      <li>Clear navigation for sign-up, sign-in, dashboard, admin, cashier, tables, and menu pages.</li>
+      <li>Theme customization support for a better cafe-specific experience.</li>
+    </ul>
+
+    <h3>5.4 Scalability</h3>
+    <ul>
+      <li>Data is organized per cafe using nested Firestore collections.</li>
+      <li>The system can support multiple cafes with separate menu, table, order, and settings data.</li>
+      <li>Additional modules can be added through existing Express API and Firestore structure.</li>
+      <li>Future real-time Firestore listeners can replace timer-based cashier refreshes.</li>
+    </ul>
+
+    <h2>6. Software Requirements</h2>
+  </section>
+
+  <section class="page">
+    <table>
+      <thead>
+        <tr>
+          <th>Software/Technology</th>
+          <th>Purpose</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>HTML, CSS, JavaScript</td><td>Frontend pages and customer ordering interface</td></tr>
+        <tr><td>Node.js</td><td>Backend runtime environment</td></tr>
+        <tr><td>Express.js</td><td>API routing, server handling, and static page serving</td></tr>
+        <tr><td>Firebase Authentication</td><td>Secure cafe owner authentication</td></tr>
+        <tr><td>Cloud Firestore</td><td>Database for cafes, menu items, tables, orders, waiter calls, and theme settings</td></tr>
+        <tr><td>Firebase Admin SDK</td><td>Server-side Firebase access and authentication verification</td></tr>
+        <tr><td>qrcode</td><td>QR code generation for cafe tables</td></tr>
+        <tr><td>VS Code</td><td>Code development</td></tr>
+        <tr><td>Git &amp; GitHub</td><td>Version control</td></tr>
+      </tbody>
+    </table>
+
+    <h2>7. Hardware Requirements</h2>
+    <table class="compact-table">
+      <thead>
+        <tr>
+          <th>Hardware component</th>
+          <th>Requirement</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Processor</td><td>Intel i3 or above</td></tr>
+        <tr><td>RAM</td><td>Minimum 4 GB</td></tr>
+        <tr><td>Device</td><td>Laptop, desktop, tablet, or mobile phone</td></tr>
+        <tr><td>Storage</td><td>Minimum 20 GB free space for development system</td></tr>
+        <tr><td>Internet connection</td><td>Required for Firebase and web access</td></tr>
+      </tbody>
+    </table>
+
+    <h2>8. Architecture Design</h2>
+    <div class="architecture">
+      <div class="arch-title">Architecture Design - QR Cafe Firestore App</div>
+      <div class="arch-grid">
+        <div class="arch-box users">
+          <div class="arch-head">Users</div>
+          <div class="arch-pill">Cafe Owner</div>
+          <div class="arch-pill">Cashier/Staff</div>
+          <div class="arch-pill">Customer</div>
+        </div>
+        <div class="arch-box frontend">
+          <div class="arch-head">1. Frontend Layer</div>
+          <div class="arch-pill">Sign-up / Sign-in</div>
+          <div class="arch-pill">Dashboard</div>
+          <div class="arch-pill">Admin Menu</div>
+          <div class="arch-pill">Cashier</div>
+          <div class="arch-pill">Customer Menu</div>
+        </div>
+        <div class="arch-box backend">
+          <div class="arch-head">2. Backend Layer</div>
+          <div class="arch-row">
+            <div class="arch-pill">Auth APIs</div>
+            <div class="arch-pill">Menu APIs</div>
+            <div class="arch-pill">Order APIs</div>
+            <div class="arch-pill">Table APIs</div>
+            <div class="arch-pill">Theme APIs</div>
+            <div class="arch-pill">Waiter APIs</div>
+          </div>
+          <div class="arch-pill">Express Server + Firebase Store</div>
+        </div>
+        <div class="arch-box services">
+          <div class="arch-head">3. Cloud Services</div>
+          <div class="arch-pill">Firebase Auth</div>
+          <div class="arch-pill">Cloud Firestore</div>
+          <div class="arch-pill">Firebase Admin SDK</div>
+          <div class="arch-pill">QR Code Generator</div>
+        </div>
+      </div>
+      <div class="database-band">
+        <div class="arch-head">4. Database Layer - Cloud Firestore</div>
+        <div class="collection-grid">
+          <div>cafes</div>
+          <div>menu_items</div>
+          <div>tables</div>
+          <div>orders</div>
+          <div>waiter_calls</div>
+          <div>settings/theme</div>
+          <div>meta/counter</div>
+          <div>analytics data</div>
+        </div>
+      </div>
+      <div class="arch-flow">
+        <div class="flow-step">Owner Login</div>
+        <div class="flow-step">Create Menu</div>
+        <div class="flow-step">Generate QR</div>
+        <div class="flow-step">Customer Scan</div>
+        <div class="flow-step">Place Order</div>
+        <div class="flow-step">Cashier Track</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page">
+    <h2>9. Database Design</h2>
+    <p><span class="label">Cafes Collection:</span> cafeId, name, email, ownerId, createdAt</p>
+    <p><span class="label">Menu Items Collection:</span> itemId, cafeId, name, description, price, category, availability</p>
+    <p><span class="label">Tables Collection:</span> tableId, cafeId, tableNumber, qrCodeUrl, status</p>
+    <p><span class="label">Orders Collection:</span> orderId, cafeId, tableNumber, items, totalAmount, status, createdAt</p>
+    <p><span class="label">Waiter Calls Collection:</span> callId, cafeId, tableNumber, status, createdAt</p>
+    <p><span class="label">Theme Settings Document:</span> primaryColor, accentColor, cafeName, menuAppearance</p>
+    <p><span class="label">Order Counter Metadata:</span> counter_order, lastOrderNumber</p>
+
+    <h2 class="section-gap">10. Future Enhancement</h2>
+    <ul>
+      <li>Real-time Firestore listeners for live cashier order updates.</li>
+      <li>Online payment integration for customer checkout.</li>
+      <li>Kitchen display system for food preparation tracking.</li>
+      <li>Inventory management based on menu item usage.</li>
+      <li>Customer feedback and rating system.</li>
+      <li>Multi-branch cafe management support.</li>
+      <li>Progressive web app installation for staff devices.</li>
+    </ul>
+
+    <h2>11. Conclusion</h2>
+    <p>The QR Cafe Firestore App provides a digital solution for cafe ordering and table service management. The system combines QR-based customer access, Firebase Authentication, Cloud Firestore, Express APIs, menu management, order tracking, waiter calls, theme customization, and analytics to improve the overall cafe workflow. By reducing manual order collection and giving cafe staff a centralized dashboard, the application improves customer convenience, service speed, and operational efficiency.</p>
+  </section>
+</body>
+</html>

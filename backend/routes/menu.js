@@ -1,6 +1,6 @@
 ﻿import express from 'express';
 import { createMenuItem, deleteMenuItem, getMenuItems, updateMenuItem } from '../firebase-store.js';
-import { requireAuth, resolveCafeId } from '../middleware/firebaseAuth.js';
+import { requireAuth, requireRoles, resolveCafeId } from '../middleware/firebaseAuth.js';
 
 const router = express.Router();
 
@@ -25,7 +25,7 @@ router.get('/categories', (req, res) => {
   res.json(CATEGORIES);
 });
 
-router.post('/', requireAuth, async (req, res) => {
+router.post('/', requireAuth, requireRoles('owner', 'admin'), async (req, res) => {
   try {
     const { name, price, description, available, image_url, category, is_trending } = req.body;
     if (!name || price === undefined) return res.status(400).json({ error: 'Name and price are required' });
@@ -47,7 +47,7 @@ router.post('/', requireAuth, async (req, res) => {
   }
 });
 
-router.put('/:id', requireAuth, async (req, res) => {
+router.put('/:id', requireAuth, requireRoles('owner', 'admin'), async (req, res) => {
   try {
     const { id } = req.params;
     const { name, price, description, available, image_url, category, is_trending } = req.body;
@@ -68,7 +68,7 @@ router.put('/:id', requireAuth, async (req, res) => {
   }
 });
 
-router.delete('/:id', requireAuth, async (req, res) => {
+router.delete('/:id', requireAuth, requireRoles('owner', 'admin'), async (req, res) => {
   try {
     const { id } = req.params;
     const deleted = await deleteMenuItem(req.session.cafeId, id);

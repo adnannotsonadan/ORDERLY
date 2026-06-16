@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sign In - QR Cafe</title>
   <link rel="stylesheet" href="style.css">
+  <script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="auth-client.js"></script>
 </head>
 <body class="auth-page">
   <div class="auth-card">
@@ -15,14 +20,11 @@
     <div class="field"><label>Password</label><input type="password" id="password" placeholder="Minimum 6 characters"></div>
     <p class="auth-error hidden" id="error"></p>
     <button class="btn-primary auth-btn" id="sign-in-btn">Sign In</button>
-    <p class="auth-switch">Need a new cafe account? <a href="/sign-up">Sign up</a></p>
-    <p class="auth-help">Authentication is powered by Firebase Auth using your email and password.</p>
+    <p class="auth-switch">Need a new cafe account? <a href="sign-up.html">Sign up</a></p>
+    <p class="auth-help">Authentication is powered by Firebase Auth in the browser.</p>
   </div>
-  <script src="/vendor/firebase/firebase-app-compat.js"></script>
-  <script src="/vendor/firebase/firebase-auth-compat.js"></script>
-  <script src="/auth-client.js"></script>
   <script>
-    window.QRCafeAuth.redirectIfAuthenticated();
+    window.QRCafeAuth.redirectIfAuthenticated('dashboard.html');
 
     async function submit() {
       const email = document.getElementById('email').value.trim();
@@ -35,7 +37,7 @@
 
       try {
         await window.QRCafeAuth.signInWithEmail(email, password);
-        window.location.href = '/dashboard';
+        window.location.href = 'dashboard.html';
       } catch (err) {
         error.textContent = err.message || 'Sign in failed. Please try again.';
         error.classList.remove('hidden');

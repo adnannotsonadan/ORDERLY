@@ -7,74 +7,93 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
-  <script src="/theme.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="auth-client.js"></script>
+  <script src="theme.js"></script>
 </head>
 <body class="cashier-page">
-
   <header class="dash-header">
     <div class="dash-header-left">
       <img class="cafe-logo" src="" alt="logo" style="display:none;height:28px;width:28px;object-fit:contain;border-radius:6px;">
-      <h1>💳 Cashier</h1>
-      <div class="live-dot" id="live-dot" title="Auto-refreshing"></div>
+      <h1>Cashier</h1>
+      <div class="live-dot pulsing" id="live-dot" title="Realtime Firestore updates"></div>
     </div>
     <div class="dash-header-right">
+      <button class="btn-primary" id="walkin-btn">Create Walk-in Bill</button>
       <div class="filter-tabs" id="filter-tabs">
         <button class="filter-tab active" data-status="active">Active</button>
         <button class="filter-tab" data-status="all">All</button>
         <button class="filter-tab" data-status="completed">Completed</button>
       </div>
-      <button class="refresh-btn" id="refresh-btn" title="Refresh">↺</button>
+      <button class="refresh-btn" id="refresh-btn" title="Refresh">?</button>
+      <button class="btn-ghost" id="logout-btn">Logout</button>
     </div>
   </header>
 
-  <!-- Stats Bar -->
   <div class="stats-bar">
-    <div class="stat-pill">
-      <span class="stat-label">Pending</span>
-      <span class="stat-val" id="stat-pending">0</span>
-    </div>
-    <div class="stat-pill">
-      <span class="stat-label">Preparing</span>
-      <span class="stat-val" id="stat-preparing">0</span>
-    </div>
-    <div class="stat-pill">
-      <span class="stat-label">Done Today</span>
-      <span class="stat-val" id="stat-completed">0</span>
-    </div>
-    <div class="stat-pill highlight">
-      <span class="stat-label">Today Revenue</span>
-      <span class="stat-val" id="stat-revenue">₹0</span>
-    </div>
+    <div class="stat-pill"><span class="stat-label">Pending</span><span class="stat-val" id="stat-pending">0</span></div>
+    <div class="stat-pill"><span class="stat-label">Preparing</span><span class="stat-val" id="stat-preparing">0</span></div>
+    <div class="stat-pill"><span class="stat-label">Done Today</span><span class="stat-val" id="stat-completed">0</span></div>
+    <div class="stat-pill highlight"><span class="stat-label">Today Revenue</span><span class="stat-val" id="stat-revenue">Rs0</span></div>
   </div>
 
-
-  <!-- Waiter Calls -->
   <div class="waiter-calls-bar hidden" id="waiter-calls-bar">
-    <div class="waiter-calls-title">🔔 Waiter Requests</div>
+    <div class="waiter-calls-title">Waiter Requests</div>
     <div class="waiter-calls-list" id="waiter-calls-list"></div>
   </div>
   <main class="cashier-main" id="cashier-main">
-    <div class="loading-state">
-      <div class="spinner"></div>
-      <p>Loading orders…</p>
-    </div>
+    <div class="loading-state"><div class="spinner"></div><p>Loading orders...</p></div>
   </main>
 
-  <script src="/vendor/firebase/firebase-app-compat.js"></script>
-  <script src="/vendor/firebase/firebase-auth-compat.js"></script>
-  <script src="/auth-client.js"></script>
+  <div class="overlay hidden" id="overlay"></div>
+  <section class="walkin-modal hidden" id="walkin-modal">
+    <div class="walkin-modal-header">
+      <h2>Create Walk-in Bill</h2>
+      <button class="cart-close" id="walkin-close">x</button>
+    </div>
+    <div class="walkin-modal-body">
+      <div class="form-grid">
+        <div class="field"><label>Phone (10 digits)</label><input id="walkin-phone" maxlength="10" placeholder="9876543210"></div>
+        <div class="field"><label>Customer Name</label><input id="walkin-name" placeholder="Guest name"></div>
+        <div class="field"><label>Email (optional)</label><input id="walkin-email" type="email" placeholder="guest@email.com"></div>
+        <div class="field"><label>Table (optional)</label><input id="walkin-table" type="number" min="1" placeholder="for dine-in bill"></div>
+      </div>
+      <div class="walkin-items" id="walkin-items"></div>
+      <div class="walkin-total-row"><span>Total</span><strong id="walkin-total">Rs0.00</strong></div>
+      <p class="form-error hidden" id="walkin-error"></p>
+      <div class="form-actions">
+        <button class="btn-primary" id="walkin-create">Create Bill & Print</button>
+      </div>
+    </div>
+  </section>
+
   <script>
     let allOrders = [];
+    let menuItems = [];
     let knownOrderIds = new Set();
     let activeFilter = 'active';
-    let refreshTimer = null;
+    let unsubscribeOrders = null;
+    let unsubscribeWaiters = null;
+    let currentSession = null;
 
     document.addEventListener('DOMContentLoaded', async () => {
-      const session = await window.QRCafeAuth.requireAuth();
-      if (!session) return;
-      loadOrders();
-      startAutoRefresh();
-      document.getElementById('refresh-btn').addEventListener('click', loadOrders);
+      currentSession = await window.QRCafeAuth.requireRoleAccess(['owner', 'admin', 'cashier'], 'dashboard.html');
+      if (!currentSession) return;
+      menuItems = await window.QRCafeApp.getMenuItems(currentSession.cafeId);
+      document.getElementById('refresh-btn').addEventListener('click', renderOrders);
+      document.getElementById('logout-btn').addEventListener('click', async () => {
+        await window.QRCafeAuth.signOut();
+        window.location.href = 'sign-in.html';
+      });
+      document.getElementById('walkin-btn').addEventListener('click', openWalkinModal);
+      document.getElementById('walkin-close').addEventListener('click', closeWalkinModal);
+      document.getElementById('overlay').addEventListener('click', closeWalkinModal);
+      document.getElementById('walkin-phone').addEventListener('input', onWalkinPhoneInput);
+      document.getElementById('walkin-phone').addEventListener('blur', autofillWalkinCustomer);
+      document.getElementById('walkin-create').addEventListener('click', createWalkinBill);
       document.getElementById('filter-tabs').addEventListener('click', e => {
         const btn = e.target.closest('.filter-tab');
         if (!btn) return;
@@ -83,67 +102,50 @@
         activeFilter = btn.dataset.status;
         renderOrders();
       });
-      window.addEventListener('beforeunload', stopAutoRefresh);
-      loadWaiterCalls();
-      setInterval(loadWaiterCalls, 5000);
-    });
 
-    // ── fetch ────────────────────────────────────────────────
-    async function loadOrders() {
-      try {
-        const res = await fetch('/api/orders');
-        if (!res.ok) throw new Error();
-        const fresh = await res.json();
+      unsubscribeOrders = await window.QRCafeApp.subscribeOrders(currentSession.cafeId, (fresh) => {
         const hasNew = fresh.some(o => !knownOrderIds.has(o.id)) && allOrders.length > 0;
         if (hasNew) flashLiveDot();
         fresh.forEach(o => knownOrderIds.add(o.id));
         allOrders = fresh;
         updateStats();
         renderOrders();
-      } catch { /* keep existing on network hiccup */ }
-    }
+      });
 
-    function startAutoRefresh() {
-      refreshTimer = setInterval(loadOrders, 5000);
-      document.getElementById('live-dot').classList.add('pulsing');
-    }
-    function stopAutoRefresh() { clearInterval(refreshTimer); }
+      unsubscribeWaiters = await window.QRCafeApp.subscribeWaiterCalls(currentSession.cafeId, renderWaiterCalls);
+    });
+
     function flashLiveDot() {
       const dot = document.getElementById('live-dot');
       dot.classList.add('flash');
       setTimeout(() => dot.classList.remove('flash'), 1000);
     }
 
-    // ── stats ────────────────────────────────────────────────
     function updateStats() {
-      document.getElementById('stat-pending').textContent   = allOrders.filter(o => o.status === 'pending').length;
+      document.getElementById('stat-pending').textContent = allOrders.filter(o => o.status === 'pending').length;
       document.getElementById('stat-preparing').textContent = allOrders.filter(o => o.status === 'preparing').length;
       document.getElementById('stat-completed').textContent = allOrders.filter(o => o.status === 'completed').length;
       const today = new Date().toDateString();
       const rev = allOrders.filter(o => o.status === 'completed' && new Date(o.created_at).toDateString() === today).reduce((s, o) => s + (o.total_price || 0), 0);
-      document.getElementById('stat-revenue').textContent = `₹${(rev / 100).toFixed(0)}`;
+      document.getElementById('stat-revenue').textContent = `Rs${(rev / 100).toFixed(0)}`;
     }
 
-    // ── render ───────────────────────────────────────────────
     function renderOrders() {
       const main = document.getElementById('cashier-main');
       let filtered = allOrders;
-      if (activeFilter === 'active')    filtered = allOrders.filter(o => o.status === 'pending' || o.status === 'preparing');
+      if (activeFilter === 'active') filtered = allOrders.filter(o => o.status === 'pending' || o.status === 'preparing');
       if (activeFilter === 'completed') filtered = allOrders.filter(o => o.status === 'completed');
 
       if (filtered.length === 0) {
-        main.innerHTML = `<div class="empty-orders"><div style="font-size:3rem">📋</div><p>${activeFilter === 'active' ? 'No active orders right now.' : 'No orders found.'}</p></div>`;
+        main.innerHTML = `<div class="empty-orders"><div style="font-size:3rem">List</div><p>${activeFilter === 'active' ? 'No active orders right now.' : 'No orders found.'}</p></div>`;
         return;
       }
 
       main.innerHTML = filtered.map(renderCard).join('');
-
-      main.querySelectorAll('.order-action-btn').forEach(btn =>
-        btn.addEventListener('click', () => updateStatus(btn.dataset.id, btn.dataset.status)));
-      main.querySelectorAll('.btn-delete-order').forEach(btn =>
-        btn.addEventListener('click', () => deleteOrder(btn.dataset.id, btn.dataset.table)));
-      main.querySelectorAll('.btn-wa-receipt').forEach(btn =>
-        btn.addEventListener('click', () => sendWAReceipt(btn.dataset.id)));
+      main.querySelectorAll('.order-action-btn').forEach(btn => btn.addEventListener('click', () => updateStatus(btn.dataset.id, btn.dataset.status)));
+      main.querySelectorAll('.btn-delete-order').forEach(btn => btn.addEventListener('click', () => deleteOrder(btn.dataset.id, btn.dataset.table)));
+      main.querySelectorAll('.btn-wa-receipt').forEach(btn => btn.addEventListener('click', () => sendWAReceipt(btn.dataset.id)));
+      main.querySelectorAll('.btn-print-bill').forEach(btn => btn.addEventListener('click', () => printBill(btn.dataset.id)));
     }
 
     function renderCard(order) {
@@ -152,64 +154,21 @@
       const elapsed = getElapsed(order.created_at);
       const isUrgent = order.status === 'pending' && getElapsedMinutes(order.created_at) >= 5;
       const waNum = order.whatsapp_number || null;
-
       return `
         <div class="order-card ${order.status} ${isUrgent ? 'urgent' : ''}">
-          <div class="order-card-header">
-            <div class="order-meta">
-              <span class="order-table">Table #${order.table_number}</span>
-              <span class="order-id">#${order.order_number || order.id}</span>
-            </div>
-            <div class="order-header-right">
-              <span class="order-elapsed ${isUrgent ? 'urgent-text' : ''}">${elapsed}</span>
-              <span class="status-chip ${order.status}">${statusLabel(order.status)}</span>
-            </div>
-          </div>
-
-          ${waNum ? `
-          <div class="wa-info-row">
-            <span class="wa-num-badge">📱 +91 ${waNum}</span>
-            <button class="btn-wa-receipt" data-id="${order.id}" title="Send receipt on WhatsApp">
-              Send Receipt
-            </button>
-          </div>` : '<div class="wa-info-row"><span class="wa-num-badge no-num">No WhatsApp number</span></div>'}
-
-          <div class="order-items-list">
-            ${items.map(item => `
-              <div class="order-line">
-                <span class="order-line-name">${esc(item.name)} <span class="order-line-qty">×${item.quantity}</span></span>
-                <span class="order-line-price">₹${(item.price * item.quantity / 100).toFixed(2)}</span>
-              </div>
-            `).join('')}
-          </div>
-
-          <div class="order-card-footer">
-            <span class="order-total">Total: ₹${(total / 100).toFixed(2)}</span>
-            <div class="order-actions">
-              ${order.status === 'pending' ? `
-                <button class="order-action-btn prepare" data-id="${order.id}" data-status="preparing">Start Preparing</button>` : ''}
-              ${order.status === 'preparing' ? `
-                <button class="order-action-btn complete" data-id="${order.id}" data-status="completed">Mark Completed</button>` : ''}
-              ${order.status === 'completed' ? `
-                <span class="done-label">✓ Done</span>` : ''}
-              <button class="btn-delete-order" data-id="${order.id}" data-table="${order.table_number}" title="Cancel order">🗑</button>
-            </div>
-          </div>
+          <div class="order-card-header"><div class="order-meta"><span class="order-table">${order.source === 'walk_in' ? 'Walk-in' : 'Table #' + (order.table_number || '-')}</span><span class="order-id">#${order.order_number || order.id}</span></div><div class="order-header-right"><span class="order-elapsed ${isUrgent ? 'urgent-text' : ''}">${elapsed}</span><span class="status-chip ${order.status}">${statusLabel(order.status)}</span></div></div>
+          <div class="wa-info-row"><span class="wa-num-badge">${order.customer_name ? esc(order.customer_name) + ' • ' : ''}+91 ${waNum || 'N/A'}</span><button class="btn-print-bill" data-id="${order.id}" title="Print bill">Print Bill</button></div>
+          ${waNum ? `<div class="wa-info-row"><span class="wa-num-badge">+91 ${waNum}</span><button class="btn-wa-receipt" data-id="${order.id}" title="Send receipt on WhatsApp">Send Receipt</button></div>` : '<div class="wa-info-row"><span class="wa-num-badge no-num">No WhatsApp number</span></div>'}
+          <div class="order-items-list">${items.map(item => `<div class="order-line"><span class="order-line-name">${esc(item.name)} <span class="order-line-qty">x${item.quantity}</span></span><span class="order-line-price">Rs${(item.price * item.quantity / 100).toFixed(2)}</span></div>`).join('')}</div>
+          <div class="order-card-footer"><span class="order-total">Total: Rs${(total / 100).toFixed(2)}</span><div class="order-actions">${order.status === 'pending' ? `<button class="order-action-btn prepare" data-id="${order.id}" data-status="preparing">Start Preparing</button>` : ''}${order.status === 'preparing' ? `<button class="order-action-btn complete" data-id="${order.id}" data-status="completed">Mark Completed</button>` : ''}${order.status === 'completed' ? `<span class="done-label">Done</span>` : ''}${['owner','admin'].includes(currentSession.role) ? `<button class="btn-delete-order" data-id="${order.id}" data-table="${order.table_number}" title="Cancel order">Delete</button>` : ''}</div></div>
         </div>`;
     }
 
-    // ── actions ──────────────────────────────────────────────
     async function updateStatus(orderId, newStatus) {
       const btn = document.querySelector(`.order-action-btn[data-id="${orderId}"]`);
-      if (btn) { btn.disabled = true; btn.textContent = '…'; }
+      if (btn) { btn.disabled = true; btn.textContent = '...'; }
       try {
-        const res = await fetch(`/api/orders/${orderId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: newStatus })
-        });
-        if (!res.ok) throw new Error();
-        await loadOrders();
+        await window.QRCafeApp.updateOrderStatus(currentSession.cafeId, orderId, newStatus);
       } catch {
         if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
       }
@@ -218,9 +177,7 @@
     async function deleteOrder(orderId, tableNum) {
       if (!confirm(`Cancel order #${orderId} from Table #${tableNum}? This cannot be undone.`)) return;
       try {
-        const res = await fetch(`/api/orders/${orderId}`, { method: 'DELETE' });
-        if (!res.ok) throw new Error();
-        await loadOrders();
+        await window.QRCafeApp.deleteOrder(currentSession.cafeId, orderId);
       } catch {
         alert('Failed to delete order. Try again.');
       }
@@ -229,71 +186,197 @@
     function sendWAReceipt(orderId) {
       const order = allOrders.find(o => o.id === orderId);
       if (!order || !order.whatsapp_number) return;
-
       const items = (order.items || []).filter(i => i !== null);
-      const lines = items.map(i =>
-        `• ${i.name} ×${i.quantity} — ₹${(i.price * i.quantity / 100).toFixed(2)}`
-      ).join('\n');
+      const lines = items.map(i => `- ${i.name} x${i.quantity} - Rs${(i.price * i.quantity / 100).toFixed(2)}`).join('\n');
       const total = order.total_price || 0;
-
-      const msg = encodeURIComponent(
-        `🧾 *Order Receipt*\n` +
-        `Order #${order.order_number || order.id} | Table #${order.table_number}\n\n` +
-        `${lines}\n\n` +
-        `*Total: ₹${(total / 100).toFixed(2)}*\n\n` +
-        `Thank you for visiting! ☕`
-      );
-
+      const msg = encodeURIComponent(`Order Receipt\nOrder #${order.order_number || order.id} | Table #${order.table_number}\n\n${lines}\n\nTotal: Rs${(total / 100).toFixed(2)}\n\nThank you for visiting!`);
       window.open(`https://wa.me/91${order.whatsapp_number}?text=${msg}`, '_blank');
     }
 
-    // ── helpers ──────────────────────────────────────────────
-    function statusLabel(s) {
-      return s === 'pending' ? '🟡 Pending' : s === 'preparing' ? '🔵 Preparing' : '🟢 Done';
+    function openWalkinModal() {
+      renderWalkinItems();
+      document.getElementById('overlay').classList.remove('hidden');
+      document.getElementById('walkin-modal').classList.remove('hidden');
     }
-    function getElapsedMinutes(ts) {
-      return Math.floor((Date.now() - new Date(ts)) / 60000);
+
+    function closeWalkinModal() {
+      document.getElementById('overlay').classList.add('hidden');
+      document.getElementById('walkin-modal').classList.add('hidden');
+      document.getElementById('walkin-error').classList.add('hidden');
     }
-    function getElapsed(ts) {
-      const m = getElapsedMinutes(ts);
-      if (m < 1) return 'Just now';
-      if (m < 60) return `${m}m ago`;
-      return `${Math.floor(m / 60)}h ${m % 60}m ago`;
+
+    function onWalkinPhoneInput(event) {
+      event.target.value = String(event.target.value || '').replace(/\D/g, '').slice(0, 10);
     }
-    // ── waiter calls ──────────────────────────────────────
-    async function loadWaiterCalls() {
+
+    async function autofillWalkinCustomer() {
+      const phone = document.getElementById('walkin-phone').value.trim();
+      if (!/^\d{10}$/.test(phone)) return;
+      const customer = await window.QRCafeApp.lookupCustomerByPhone(currentSession.cafeId, phone);
+      if (!customer) return;
+      if (customer.name) document.getElementById('walkin-name').value = customer.name;
+      if (customer.email) document.getElementById('walkin-email').value = customer.email;
+    }
+
+    function renderWalkinItems() {
+      const container = document.getElementById('walkin-items');
+      container.innerHTML = menuItems.filter(item => item.available).map((item) => `
+        <div class="walkin-item-row">
+          <div><strong>${esc(item.name)}</strong><div class="admin-item-desc">Rs ${(item.price / 100).toFixed(2)}</div></div>
+          <input class="walkin-qty" data-item-id="${item.id}" type="number" min="0" value="0">
+        </div>
+      `).join('');
+
+      container.querySelectorAll('.walkin-qty').forEach((input) => {
+        input.addEventListener('input', updateWalkinTotal);
+      });
+      updateWalkinTotal();
+    }
+
+    function getWalkinItems() {
+      const lines = [];
+      document.querySelectorAll('.walkin-qty').forEach((input) => {
+        const qty = Number(input.value || 0);
+        if (qty < 1) return;
+        lines.push({ id: input.dataset.itemId, quantity: qty });
+      });
+      return lines;
+    }
+
+    function updateWalkinTotal() {
+      const total = getWalkinItems().reduce((sum, line) => {
+        const item = menuItems.find((it) => it.id === line.id);
+        if (!item) return sum;
+        return sum + (item.price * line.quantity);
+      }, 0);
+      document.getElementById('walkin-total').textContent = `Rs${(total / 100).toFixed(2)}`;
+    }
+
+    async function createWalkinBill() {
+      const phone = document.getElementById('walkin-phone').value.trim();
+      const name = document.getElementById('walkin-name').value.trim();
+      const email = document.getElementById('walkin-email').value.trim();
+      const table = Number(document.getElementById('walkin-table').value || 0) || null;
+      const items = getWalkinItems();
+      const errorEl = document.getElementById('walkin-error');
+      errorEl.classList.add('hidden');
+
+      if (!/^\d{10}$/.test(phone)) {
+        errorEl.textContent = 'Enter a valid 10-digit phone number.';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+      if (!items.length) {
+        errorEl.textContent = 'Add at least one item for billing.';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+
+      const btn = document.getElementById('walkin-create');
+      btn.disabled = true;
+      btn.textContent = 'Creating...';
       try {
-        const res = await fetch("/api/waiter");
-        if (!res.ok) return;
-        const calls = await res.json();
-        const bar  = document.getElementById("waiter-calls-bar");
-        const list = document.getElementById("waiter-calls-list");
-        if (calls.length === 0) { bar.classList.add("hidden"); return; }
-        bar.classList.remove("hidden");
-        list.innerHTML = calls.map(c => `
-          <div class="waiter-call-chip">
-            <span>Table #${c.table_number}</span>
-            <span class="waiter-call-time">${getElapsed(c.created_at)}</span>
-            <button class="waiter-dismiss-btn" data-id="${c.id}">Done</button>
-          </div>`).join("");
-        list.querySelectorAll(".waiter-dismiss-btn").forEach(btn =>
-          btn.addEventListener("click", () => dismissWaiter(btn.dataset.id)));
-      } catch {}
+        const created = await window.QRCafeApp.createOrder(currentSession.cafeId, {
+          tableNumber: table,
+          items,
+          whatsappNumber: phone,
+          customerName: name,
+          customerEmail: email,
+          source: 'walk_in',
+          billingStatus: 'billed',
+          status: 'completed',
+        });
+        printBillContent(created);
+        closeWalkinModal();
+      } catch (error) {
+        errorEl.textContent = error.message || 'Failed to create bill.';
+        errorEl.classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Create Bill & Print';
+      }
+    }
+
+    async function printBill(orderId) {
+      const order = allOrders.find((entry) => entry.id === orderId);
+      if (!order) return;
+      printBillContent(order);
+    }
+
+    function printBillContent(order) {
+      const theme = window.CafeTheme ? window.CafeTheme.get() : {};
+      const restaurantName = theme.cafeName || 'Our Cafe';
+      const lines = (order.items || []).map((item) => `
+        <tr>
+          <td>${esc(item.name)} x${item.quantity}</td>
+          <td style="text-align:right;">Rs${((item.price * item.quantity) / 100).toFixed(2)}</td>
+        </tr>
+      `).join('');
+
+      const html = `
+        <html>
+          <head>
+            <title>Receipt #${order.order_number || order.id}</title>
+            <style>
+              @page { size: 80mm auto; margin: 2mm; }
+              body { font-family: monospace; width: 76mm; margin: 0 auto; padding: 2mm; }
+              .center { text-align: center; }
+              .line { border-top: 1px dashed #000; margin: 6px 0; }
+              table { width: 100%; border-collapse: collapse; font-size: 12px; }
+              td { padding: 2px 0; vertical-align: top; }
+              .meta { font-size: 12px; }
+            </style>
+          </head>
+          <body>
+            <div class="center"><strong>${esc(restaurantName)}</strong></div>
+            <div class="center meta">${esc(theme.restaurantAddress || '')}</div>
+            <div class="center meta">Phone: ${esc(theme.restaurantPhone || '')}</div>
+            <div class="center meta">GST: ${esc(theme.gstNumber || '-')} | FSSAI: ${esc(theme.fssaiNumber || '-')}</div>
+            <div class="line"></div>
+            <div class="meta">Bill: #${order.order_number || order.id}</div>
+            <div class="meta">Date: ${new Date(order.created_at).toLocaleString()}</div>
+            <div class="meta">Customer: ${esc(order.customer_name || 'Walk-in')}</div>
+            <div class="meta">Phone: ${esc(order.whatsapp_number || '-')}</div>
+            <div class="line"></div>
+            <table>${lines}</table>
+            <div class="line"></div>
+            <table><tr><td><strong>Total</strong></td><td style="text-align:right;"><strong>Rs${((order.total_price || 0) / 100).toFixed(2)}</strong></td></tr></table>
+            <div class="center meta" style="margin-top:8px;">Thank you for visiting!</div>
+            <script>window.print();window.close();<\/script>
+          </body>
+        </html>`;
+
+      const popup = window.open('', '_blank', 'width=400,height=700');
+      if (!popup) return;
+      popup.document.open();
+      popup.document.write(html);
+      popup.document.close();
+    }
+
+    function renderWaiterCalls(calls) {
+      const bar = document.getElementById('waiter-calls-bar');
+      const list = document.getElementById('waiter-calls-list');
+      if (!calls.length) { bar.classList.add('hidden'); return; }
+      bar.classList.remove('hidden');
+      list.innerHTML = calls.map(c => `<div class="waiter-call-chip"><span>Table #${c.table_number}</span><span class="waiter-call-time">${getElapsed(c.created_at)}</span><button class="waiter-dismiss-btn" data-id="${c.id}">Done</button></div>`).join('');
+      list.querySelectorAll('.waiter-dismiss-btn').forEach(btn => btn.addEventListener('click', () => dismissWaiter(btn.dataset.id)));
     }
 
     async function dismissWaiter(id) {
       try {
-        await fetch("/api/waiter/" + id, { method: "DELETE" });
-        await loadWaiterCalls();
+        await window.QRCafeApp.dismissWaiterCall(currentSession.cafeId, id);
       } catch {}
     }
 
-    function esc(str) {
-      if (!str) return '';
-      const d = document.createElement('div');
-      d.textContent = str;
-      return d.innerHTML;
-    }
+    function statusLabel(s) { return s === 'pending' ? 'Pending' : s === 'preparing' ? 'Preparing' : s === 'cancelled' ? 'Cancelled' : 'Done'; }
+    function getElapsedMinutes(ts) { return Math.floor((Date.now() - new Date(ts)) / 60000); }
+    function getElapsed(ts) { const m = getElapsedMinutes(ts); if (m < 1) return 'Just now'; if (m < 60) return `${m}m ago`; return `${Math.floor(m / 60)}h ${m % 60}m ago`; }
+    function esc(str) { if (!str) return ''; const d = document.createElement('div'); d.textContent = str; return d.innerHTML; }
+
+    window.addEventListener('beforeunload', () => {
+      if (typeof unsubscribeOrders === 'function') unsubscribeOrders();
+      if (typeof unsubscribeWaiters === 'function') unsubscribeWaiters();
+    });
   </script>
 </body>
 </html>

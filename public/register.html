@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Register Staff - QR Cafe</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+</head>
+<body class="auth-page">
+  <div class="auth-card">
+    <div class="auth-logo">Staff</div>
+    <h1 class="auth-title">Register a staff account</h1>
+    <p class="auth-sub">Creates a login for a cashier, waiter, or admin. After registering, add them from the Admin Panel with their UID.</p>
+
+    <div id="form-wrap">
+      <div class="field"><label>Display Name</label><input type="text" id="name" placeholder="e.g. Ravi Kumar"></div>
+      <div class="field"><label>Email address</label><input type="email" id="email" placeholder="staff@cafe.com"></div>
+      <div class="field"><label>Password</label><input type="password" id="password" placeholder="Minimum 6 characters"></div>
+      <p class="auth-error hidden" id="error"></p>
+      <button class="btn-primary auth-btn" id="register-btn">Create Account</button>
+      <p class="auth-switch">Creating a new cafe instead? <a href="sign-up.html">Sign up as owner</a></p>
+    </div>
+
+    <div id="success-wrap" style="display:none; text-align:center;">
+      <div style="font-size:2rem; margin-bottom:12px;">✓</div>
+      <h2 style="margin:0 0 8px;">Account created!</h2>
+      <p style="color:var(--text-muted); margin-bottom:20px;">Copy this UID and add the staff member from the Admin Panel.</p>
+      <div style="background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:14px; margin-bottom:20px;">
+        <div style="font-size:11px; color:var(--text-muted); margin-bottom:6px;">USER UID</div>
+        <div id="uid-display" style="font-family:monospace; font-size:13px; word-break:break-all; font-weight:600;"></div>
+      </div>
+      <button class="btn-primary" id="copy-btn" style="width:100%; margin-bottom:10px;">Copy UID</button>
+      <a href="admin.html" class="btn-ghost" style="display:block; text-align:center; padding:10px;">Go to Admin Panel →</a>
+      <p style="margin-top:16px; font-size:13px; color:var(--text-muted);">Register another? <a href="register.html">Start over</a></p>
+    </div>
+  </div>
+
+  <script>
+    let firebaseApp, auth, db;
+
+    async function initFirebase() {
+      if (auth) return;
+      const config = window.__FIREBASE_CONFIG__;
+      if (!config) throw new Error('Firebase config not found.');
+      if (!firebase.apps.length) {
+        firebaseApp = firebase.initializeApp(config);
+      } else {
+        firebaseApp = firebase.apps[0];
+      }
+      auth = firebase.auth();
+      db = firebase.firestore();
+    }
+
+    async function register() {
+      const name = document.getElementById('name').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const errorEl = document.getElementById('error');
+      const btn = document.getElementById('register-btn');
+
+      errorEl.classList.add('hidden');
+
+      if (!name) return showError('Display name is required.');
+      if (!email) return showError('Email is required.');
+      if (password.length < 6) return showError('Password must be at least 6 characters.');
+
+      btn.disabled = true;
+      btn.textContent = 'Creating...';
+
+      try {
+        await initFirebase();
+        const credential = await auth.createUserWithEmailAndPassword(email, password);
+        await credential.user.updateProfile({ displayName: name });
+
+        // Create the users collection doc so admin panel can add them to a team
+        await db.collection('users').doc(credential.user.uid).set({
+          email: email.toLowerCase(),
+          display_name: name,
+          status: 'active',
+          default_cafe_id: null,
+          created_by: null,
+          created_at: firebase.firestore.FieldValue.serverTimestamp(),
+          updated_at: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+
+        // Sign back out — this page is for creating staff, not logging in
+        await auth.signOut();
+
+        document.getElementById('uid-display').textContent = credential.user.uid;
+        document.getElementById('form-wrap').style.display = 'none';
+        document.getElementById('success-wrap').style.display = 'block';
+      } catch (err) {
+        showError(err.message || 'Registration failed.');
+        btn.disabled = false;
+        btn.textContent = 'Create Account';
+      }
+    }
+
+    function showError(msg) {
+      const el = document.getElementById('error');
+      el.textContent = msg;
+      el.classList.remove('hidden');
+    }
+
+    document.getElementById('register-btn').addEventListener('click', register);
+    document.getElementById('password').addEventListener('keydown', e => { if (e.key === 'Enter') register(); });
+
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('copy-btn').addEventListener('click', () => {
+        const uid = document.getElementById('uid-display').textContent;
+        navigator.clipboard.writeText(uid).then(() => {
+          const btn = document.getElementById('copy-btn');
+          btn.textContent = 'Copied!';
+          setTimeout(() => btn.textContent = 'Copy UID', 2000);
+        });
+      });
+    });
+  </script>
+</body>
+</html>

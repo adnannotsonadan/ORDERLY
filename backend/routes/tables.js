@@ -1,11 +1,11 @@
 ﻿import express from 'express';
 import { createTable, deleteTable, getTable, getTables, updateTable } from '../firebase-store.js';
-import { requireAuth } from '../middleware/firebaseAuth.js';
+import { requireAuth, requireRoles } from '../middleware/firebaseAuth.js';
 import QRCode from 'qrcode';
 
 const router = express.Router();
 
-router.get('/', requireAuth, async (req, res) => {
+router.get('/', requireAuth, requireRoles('owner', 'admin'), async (req, res) => {
   try {
     const tables = await getTables(req.session.cafeId);
     res.json(tables);
@@ -15,7 +15,7 @@ router.get('/', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/', requireAuth, async (req, res) => {
+router.post('/', requireAuth, requireRoles('owner', 'admin'), async (req, res) => {
   try {
     const { number, label } = req.body;
     if (!number) return res.status(400).json({ error: 'Table number required' });
@@ -31,7 +31,7 @@ router.post('/', requireAuth, async (req, res) => {
   }
 });
 
-router.put('/:id', requireAuth, async (req, res) => {
+router.put('/:id', requireAuth, requireRoles('owner', 'admin'), async (req, res) => {
   try {
     const { label } = req.body;
     const table = await updateTable(req.session.cafeId, req.params.id, { label });
@@ -43,7 +43,7 @@ router.put('/:id', requireAuth, async (req, res) => {
   }
 });
 
-router.delete('/:id', requireAuth, async (req, res) => {
+router.delete('/:id', requireAuth, requireRoles('owner', 'admin'), async (req, res) => {
   try {
     const deleted = await deleteTable(req.session.cafeId, req.params.id);
     if (!deleted) return res.status(404).json({ error: 'Table not found' });
@@ -54,7 +54,7 @@ router.delete('/:id', requireAuth, async (req, res) => {
   }
 });
 
-router.get('/:id/qr', requireAuth, async (req, res) => {
+router.get('/:id/qr', requireAuth, requireRoles('owner', 'admin'), async (req, res) => {
   try {
     const table = await getTable(req.session.cafeId, req.params.id);
     if (!table) return res.status(404).json({ error: 'Table not found' });

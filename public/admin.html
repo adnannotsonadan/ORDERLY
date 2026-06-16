@@ -7,22 +7,45 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
-  <script src="/theme.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="auth-client.js"></script>
+  <script src="theme.js"></script>
 </head>
 <body class="admin-page">
-
   <header class="dash-header">
     <div class="dash-header-left">
       <img class="cafe-logo" src="" alt="logo" style="display:none;height:28px;width:28px;object-fit:contain;border-radius:6px;">
-      <h1>⚙️ Admin Panel</h1>
+      <h1>Admin Panel</h1>
     </div>
-    <a href="/cashier" class="header-link">Cashier →</a>
+    <a href="cashier.html" class="header-link">Cashier ?</a>
   </header>
 
   <main class="admin-main">
     <div id="theme-section"></div>
 
-    <!-- Add Item Form -->
+    <section class="admin-form-card" id="team-card">
+      <h2>Team Members</h2>
+      <p class="theme-hint">Add registered users to this cafe so they can access the app with the right role.</p>
+      <div class="form-grid team-grid">
+        <div class="field"><label for="team-uid">User UID</label><input id="team-uid" type="text" placeholder="Firebase UID"></div>
+        <div class="field"><label for="team-email">Email</label><input id="team-email" type="email" placeholder="member@cafe.com"></div>
+        <div class="field"><label for="team-name">Display Name</label><input id="team-name" type="text" placeholder="Team member name"></div>
+        <div class="field"><label for="team-role">Role</label><select id="team-role"><option value="cashier">Cashier</option><option value="waiter">Waiter</option><option value="admin">Admin</option></select></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn-primary" id="team-add-btn">Add Member</button>
+        <button class="btn-ghost hidden" id="team-cancel-btn">Cancel</button>
+      </div>
+      <p class="form-error hidden" id="team-error"></p>
+      <div class="team-list-wrap" style="margin-top:18px;">
+        <div class="list-header"><h3 style="margin:0;">Current Team</h3><span class="item-count" id="team-count">-</span></div>
+        <div id="team-list"><div class="loading-state"><div class="spinner"></div><p>Loading...</p></div></div>
+      </div>
+    </section>
+
     <section class="admin-form-card">
       <h2 id="form-title">Add New Item</h2>
       <div class="form-grid">
@@ -31,7 +54,7 @@
           <input id="f-name" type="text" placeholder="e.g. Cappuccino">
         </div>
         <div class="field">
-          <label for="f-price">Price (₹)</label>
+          <label for="f-price">Price (Rs)</label>
           <input id="f-price" type="number" min="1" step="0.01" placeholder="e.g. 4.50">
         </div>
         <div class="field">
@@ -69,7 +92,7 @@
         <div class="field checkbox-field">
           <label class="checkbox-label trending-label">
             <input id="f-trending" type="checkbox">
-            🔥 Mark as Trending
+            Mark as Trending
           </label>
         </div>
       </div>
@@ -80,34 +103,41 @@
       <p class="form-error hidden" id="form-error"></p>
     </section>
 
-    <!-- Menu Items List grouped by category -->
     <section class="admin-list-section">
       <div class="list-header">
         <h2>Menu Items</h2>
-        <span class="item-count" id="item-count">—</span>
+        <span class="item-count" id="item-count">-</span>
       </div>
       <div id="admin-list">
-        <div class="loading-state"><div class="spinner"></div><p>Loading…</p></div>
+        <div class="loading-state"><div class="spinner"></div><p>Loading...</p></div>
       </div>
     </section>
   </main>
 
   <div class="toast hidden" id="toast"></div>
 
-  <script src="/vendor/firebase/firebase-app-compat.js"></script>
-  <script src="/vendor/firebase/firebase-auth-compat.js"></script>
-  <script src="/auth-client.js"></script>
   <script>
     const CATEGORIES = ['Coffee','Tea','Juices & Shakes','Beverages','Snacks','Mains','Desserts','Bakery','Other'];
     let items = [];
+    let teamMembers = [];
     let editingId = null;
+    let editingTeamUid = null;
+    let currentSession = null;
+    let unsubscribeMenu = null;
 
     document.addEventListener('DOMContentLoaded', async () => {
-      const session = await window.QRCafeAuth.requireAuth();
-      if (!session) return;
-      loadItems();
+      currentSession = await window.QRCafeAuth.requireRoleAccess(['owner', 'admin'], 'dashboard.html');
+      if (!currentSession) return;
+      unsubscribeMenu = await window.QRCafeApp.subscribeMenuItems(currentSession.cafeId, (nextItems) => {
+        items = nextItems;
+        document.getElementById('item-count').textContent = items.length + ' items';
+        renderList();
+      });
+      await loadTeamMembers();
       document.getElementById('submit-btn').addEventListener('click', handleSubmit);
       document.getElementById('cancel-btn').addEventListener('click', cancelEdit);
+      document.getElementById('team-add-btn').addEventListener('click', handleTeamSubmit);
+      document.getElementById('team-cancel-btn').addEventListener('click', cancelTeamEdit);
       renderThemeSection();
 
       document.getElementById('f-image').addEventListener('input', e => {
@@ -124,19 +154,6 @@
       });
     });
 
-    // ── fetch ──────────────────────────────────────────────
-    async function loadItems() {
-      try {
-        const res = await fetch('/api/menu');
-        items = await res.json();
-        document.getElementById('item-count').textContent = items.length + ' items';
-        renderList();
-      } catch {
-        document.getElementById('admin-list').innerHTML = '<p class="error-msg">Failed to load items.</p>';
-      }
-    }
-
-    // ── render list grouped by category ───────────────────
     function renderList() {
       const el = document.getElementById('admin-list');
       if (items.length === 0) {
@@ -144,7 +161,6 @@
         return;
       }
 
-      // group by category
       const groups = {};
       CATEGORIES.forEach(c => groups[c] = []);
       items.forEach(item => {
@@ -161,18 +177,16 @@
         groups[cat].forEach(item => {
           html += `
             <div class="admin-item-row ${item.available ? '' : 'unavail'}">
-              ${item.image_url
-                ? `<img src="${esc(item.image_url)}" alt="${esc(item.name)}" class="admin-item-img" onerror="this.style.display='none'">`
-                : `<div class="admin-item-img-placeholder">🍽️</div>`}
+              ${item.image_url ? `<img src="${esc(item.image_url)}" alt="${esc(item.name)}" class="admin-item-img" onerror="this.style.display='none'">` : `<div class="admin-item-img-placeholder">Item</div>`}
               <div class="admin-item-info">
                 <span class="admin-item-name">${esc(item.name)}</span>
-                ${item.is_trending ? '<span class="trending-badge">🔥 Trending</span>' : ''}
-                <span class="admin-item-price">₹${(item.price / 100).toFixed(2)}</span>
+                ${item.is_trending ? '<span class="trending-badge">Trending</span>' : ''}
+                <span class="admin-item-price">Rs ${(item.price / 100).toFixed(2)}</span>
                 ${item.description ? `<span class="admin-item-desc">${esc(item.description)}</span>` : ''}
                 <span class="avail-badge ${item.available ? 'yes' : 'no'}">${item.available ? 'Available' : 'Hidden'}</span>
               </div>
               <div class="admin-item-actions">
-                <button class="btn-sm btn-trend ${item.is_trending ? 'active-trend' : ''}" data-id="${item.id}" data-trending="${item.is_trending}">🔥</button>
+                <button class="btn-sm btn-trend ${item.is_trending ? 'active-trend' : ''}" data-id="${item.id}" data-trending="${item.is_trending}">Trend</button>
                 <button class="btn-sm btn-edit" data-id="${item.id}">Edit</button>
                 <button class="btn-sm btn-toggle" data-id="${item.id}" data-avail="${item.available}">${item.available ? 'Disable' : 'Enable'}</button>
                 <button class="btn-sm btn-delete" data-id="${item.id}">Delete</button>
@@ -183,65 +197,70 @@
       });
 
       el.innerHTML = html;
-
-      el.querySelectorAll('.btn-edit').forEach(b =>
-        b.addEventListener('click', () => startEdit(b.dataset.id)));
-      el.querySelectorAll('.btn-toggle').forEach(b =>
-        b.addEventListener('click', () => toggleAvail(b.dataset.id, b.dataset.avail === 'true')));
-      el.querySelectorAll('.btn-delete').forEach(b =>
-        b.addEventListener('click', () => deleteItem(b.dataset.id)));
-      el.querySelectorAll('.btn-trend').forEach(b =>
-        b.addEventListener('click', () => toggleTrending(b.dataset.id, b.dataset.trending === 'true')));
+      el.querySelectorAll('.btn-edit').forEach(b => b.addEventListener('click', () => startEdit(b.dataset.id)));
+      el.querySelectorAll('.btn-toggle').forEach(b => b.addEventListener('click', () => toggleAvail(b.dataset.id, b.dataset.avail === 'true')));
+      el.querySelectorAll('.btn-delete').forEach(b => b.addEventListener('click', () => deleteItem(b.dataset.id)));
+      el.querySelectorAll('.btn-trend').forEach(b => b.addEventListener('click', () => toggleTrending(b.dataset.id, b.dataset.trending === 'true')));
     }
 
-    // ── add / edit ─────────────────────────────────────────
+    async function loadTeamMembers() {
+      try {
+        teamMembers = await window.QRCafeApp.getTeamMembers(currentSession.cafeId);
+        document.getElementById('team-count').textContent = teamMembers.length + ' members';
+        renderTeamList();
+      } catch (err) {
+        document.getElementById('team-list').innerHTML = '<p class="error-msg">Unable to load team members.</p>';
+      }
+    }
+
     async function handleSubmit() {
-      const name      = document.getElementById('f-name').value.trim();
-      const priceRaw  = parseFloat(document.getElementById('f-price').value);
-      const desc      = document.getElementById('f-desc').value.trim();
-      const imageUrl  = document.getElementById('f-image').value.trim();
+      const name = document.getElementById('f-name').value.trim();
+      const priceRaw = parseFloat(document.getElementById('f-price').value);
+      const desc = document.getElementById('f-desc').value.trim();
+      const imageUrl = document.getElementById('f-image').value.trim();
       const available = document.getElementById('f-available').checked;
-      const category  = document.getElementById('f-category').value;
-      const trending  = document.getElementById('f-trending').checked;
+      const category = document.getElementById('f-category').value;
+      const trending = document.getElementById('f-trending').checked;
 
       if (!name) return showError('Name is required.');
       if (!priceRaw || priceRaw <= 0 || isNaN(priceRaw)) return showError('Enter a valid price.');
       const price = Math.round(priceRaw * 100);
 
       const payload = { name, price, description: desc, available, image_url: imageUrl || null, category, is_trending: trending };
-      const isEdit  = editingId !== null;
-      const url     = isEdit ? '/api/menu/' + editingId : '/api/menu';
-      const method  = isEdit ? 'PUT' : 'POST';
-
+      const isEdit = editingId !== null;
       const btn = document.getElementById('submit-btn');
       btn.disabled = true;
       try {
-        const res  = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-        const data = await res.json();
-        if (!res.ok) return showError(data.error || 'Something went wrong.');
+        if (isEdit) {
+          await window.QRCafeApp.updateMenuItem(currentSession.cafeId, editingId, payload);
+        } else {
+          await window.QRCafeApp.createMenuItem(currentSession.cafeId, payload);
+        }
         showToast(isEdit ? 'Item updated!' : 'Item added to ' + category + '!');
         cancelEdit();
-        await loadItems();
-      } catch { showError('Network error. Try again.'); }
-      finally { btn.disabled = false; }
+      } catch (err) {
+        showError(err.message || 'Something went wrong.');
+      } finally {
+        btn.disabled = false;
+      }
     }
 
     function startEdit(id) {
       const item = items.find(i => i.id === id);
       if (!item) return;
       editingId = id;
-      document.getElementById('f-name').value      = item.name;
-      document.getElementById('f-price').value     = (item.price / 100).toFixed(2);
-      document.getElementById('f-desc').value      = item.description || '';
-      document.getElementById('f-image').value     = item.image_url || '';
+      document.getElementById('f-name').value = item.name;
+      document.getElementById('f-price').value = (item.price / 100).toFixed(2);
+      document.getElementById('f-desc').value = item.description || '';
+      document.getElementById('f-image').value = item.image_url || '';
       document.getElementById('f-available').checked = item.available;
-      document.getElementById('f-trending').checked  = item.is_trending || false;
-      document.getElementById('f-category').value  = item.category || 'Other';
+      document.getElementById('f-trending').checked = item.is_trending || false;
+      document.getElementById('f-category').value = item.category || 'Other';
 
       if (item.image_url) {
-        const img  = document.getElementById('img-preview');
+        const img = document.getElementById('img-preview');
         const wrap = document.getElementById('img-preview-wrap');
-        img.src    = item.image_url;
+        img.src = item.image_url;
         img.onload = () => wrap.classList.remove('hidden');
       }
 
@@ -253,13 +272,13 @@
 
     function cancelEdit() {
       editingId = null;
-      document.getElementById('f-name').value    = '';
-      document.getElementById('f-price').value   = '';
-      document.getElementById('f-desc').value    = '';
-      document.getElementById('f-image').value   = '';
+      document.getElementById('f-name').value = '';
+      document.getElementById('f-price').value = '';
+      document.getElementById('f-desc').value = '';
+      document.getElementById('f-image').value = '';
       document.getElementById('f-available').checked = true;
-      document.getElementById('f-trending').checked  = false;
-      document.getElementById('f-category').value    = 'Coffee';
+      document.getElementById('f-trending').checked = false;
+      document.getElementById('f-category').value = 'Coffee';
       document.getElementById('img-preview-wrap').classList.add('hidden');
       document.getElementById('form-title').textContent = 'Add New Item';
       document.getElementById('submit-btn').textContent = 'Add Item';
@@ -267,113 +286,68 @@
       hideError();
     }
 
-    // ── toggle trending ────────────────────────────────────
     async function toggleTrending(id, current) {
       try {
-        const res = await fetch('/api/menu/' + id, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ is_trending: !current })
-        });
-        if (!res.ok) throw new Error();
+        await window.QRCafeApp.updateMenuItem(currentSession.cafeId, id, { is_trending: !current });
         showToast(!current ? 'Marked as Trending!' : 'Removed from Trending.');
-        await loadItems();
-      } catch { showToast('Failed to update.', 'error'); }
+      } catch {
+        showToast('Failed to update.', 'error');
+      }
     }
 
     async function toggleAvail(id, current) {
       try {
-        const res = await fetch('/api/menu/' + id, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ available: !current })
-        });
-        if (!res.ok) throw new Error();
+        await window.QRCafeApp.updateMenuItem(currentSession.cafeId, id, { available: !current });
         showToast(current ? 'Item hidden from menu.' : 'Item is now available.');
-        await loadItems();
-      } catch { showToast('Failed to update.', 'error'); }
+      } catch {
+        showToast('Failed to update.', 'error');
+      }
     }
 
     async function deleteItem(id) {
       const item = items.find(i => i.id === id);
       if (!confirm('Delete "' + (item ? item.name : id) + '"? This cannot be undone.')) return;
       try {
-        const res = await fetch('/api/menu/' + id, { method: 'DELETE' });
-        if (!res.ok) throw new Error();
+        await window.QRCafeApp.deleteMenuItem(currentSession.cafeId, id);
         showToast('Item deleted.');
-        await loadItems();
-      } catch { showToast('Failed to delete.', 'error'); }
+      } catch {
+        showToast('Failed to delete.', 'error');
+      }
     }
 
-    // ── theme section ──────────────────────────────────────
     function renderThemeSection() {
       const t = window.CafeTheme ? window.CafeTheme.get() : {};
-      const brandColor   = t.brandColor   || '#c8773a';
-      const bgColor      = t.bgColor      || '#f7f4f0';
+      const brandColor = t.brandColor || '#c8773a';
+      const bgColor = t.bgColor || '#f7f4f0';
       const surfaceColor = t.surfaceColor || '#ffffff';
-      const textColor    = t.textColor    || '#1a1714';
-      const fontFamily   = t.fontFamily   || 'DM Sans';
-      const cafeName     = t.cafeName     || 'Our Cafe';
-      const logoUrl      = t.logoUrl      || '';
+      const textColor = t.textColor || '#1a1714';
+      const fontFamily = t.fontFamily || 'DM Sans';
+      const cafeName = t.cafeName || 'Our Cafe';
+      const logoUrl = t.logoUrl || '';
+      const gstNumber = t.gstNumber || '';
+      const fssaiNumber = t.fssaiNumber || '';
+      const restaurantPhone = t.restaurantPhone || '';
+      const restaurantAddress = t.restaurantAddress || '';
 
       document.getElementById('theme-section').innerHTML = `
         <section class="admin-form-card theme-section">
-          <h2>🎨 Theme Settings</h2>
+          <h2>Theme Settings</h2>
           <p class="theme-hint">Changes apply instantly across all pages.</p>
           <div class="theme-grid">
-            <div class="theme-field">
-              <label>Cafe Name</label>
-              <input type="text" id="t-name" value="${esc(cafeName)}" placeholder="Our Cafe">
-            </div>
-            <div class="theme-field">
-              <label>Logo URL <span class="optional">(optional)</span></label>
-              <input type="url" id="t-logo" value="${esc(logoUrl)}" placeholder="https://...">
-            </div>
-            <div class="theme-field logo-preview-wrap" id="logo-preview-wrap" style="${logoUrl ? '' : 'display:none'}">
-              <img id="logo-preview-img" src="${esc(logoUrl)}" alt="logo preview">
-              <span>Logo Preview</span>
-            </div>
-            <div class="theme-field">
-              <label>Brand Color</label>
-              <div class="color-row">
-                <input type="color" id="t-brand" value="${brandColor}">
-                <span class="color-val" id="t-brand-val">${brandColor}</span>
-              </div>
-            </div>
-            <div class="theme-field">
-              <label>Background Color</label>
-              <div class="color-row">
-                <input type="color" id="t-bg" value="${bgColor}">
-                <span class="color-val" id="t-bg-val">${bgColor}</span>
-              </div>
-            </div>
-            <div class="theme-field">
-              <label>Surface Color <span class="optional">(cards)</span></label>
-              <div class="color-row">
-                <input type="color" id="t-surface" value="${surfaceColor}">
-                <span class="color-val" id="t-surface-val">${surfaceColor}</span>
-              </div>
-            </div>
-            <div class="theme-field">
-              <label>Text Color</label>
-              <div class="color-row">
-                <input type="color" id="t-text" value="${textColor}">
-                <span class="color-val" id="t-text-val">${textColor}</span>
-              </div>
-            </div>
-            <div class="theme-field full">
-              <label>Font</label>
-              <div class="font-options" id="font-options">
-                ${['DM Sans','Poppins','Nunito','Inter'].map(f =>
-                  '<button class="font-btn ' + (fontFamily === f ? 'active' : '') + '" data-font="' + f + '" style="font-family:' + f + ',sans-serif">' + f + '</button>'
-                ).join('')}
-              </div>
-            </div>
+            <div class="theme-field"><label>Cafe Name</label><input type="text" id="t-name" value="${esc(cafeName)}" placeholder="Our Cafe"></div>
+            <div class="theme-field"><label>Logo URL <span class="optional">(optional)</span></label><input type="url" id="t-logo" value="${esc(logoUrl)}" placeholder="https://..."></div>
+            <div class="theme-field"><label>GST Number</label><input type="text" id="t-gst" value="${esc(gstNumber)}" placeholder="e.g. 27ABCDE1234F1Z5"></div>
+            <div class="theme-field"><label>FSSAI Number</label><input type="text" id="t-fssai" value="${esc(fssaiNumber)}" placeholder="e.g. 12345678901234"></div>
+            <div class="theme-field"><label>Restaurant Phone</label><input type="tel" id="t-phone" value="${esc(restaurantPhone)}" placeholder="9876543210"></div>
+            <div class="theme-field full"><label>Restaurant Address</label><input type="text" id="t-address" value="${esc(restaurantAddress)}" placeholder="Full business address"></div>
+            <div class="theme-field logo-preview-wrap" id="logo-preview-wrap" style="${logoUrl ? '' : 'display:none'}"><img id="logo-preview-img" src="${esc(logoUrl)}" alt="logo preview"><span>Logo Preview</span></div>
+            <div class="theme-field"><label>Brand Color</label><div class="color-row"><input type="color" id="t-brand" value="${brandColor}"><span class="color-val" id="t-brand-val">${brandColor}</span></div></div>
+            <div class="theme-field"><label>Background Color</label><div class="color-row"><input type="color" id="t-bg" value="${bgColor}"><span class="color-val" id="t-bg-val">${bgColor}</span></div></div>
+            <div class="theme-field"><label>Surface Color <span class="optional">(cards)</span></label><div class="color-row"><input type="color" id="t-surface" value="${surfaceColor}"><span class="color-val" id="t-surface-val">${surfaceColor}</span></div></div>
+            <div class="theme-field"><label>Text Color</label><div class="color-row"><input type="color" id="t-text" value="${textColor}"><span class="color-val" id="t-text-val">${textColor}</span></div></div>
+            <div class="theme-field full"><label>Font</label><div class="font-options" id="font-options">${['DM Sans','Poppins','Nunito','Inter'].map(f => '<button class="font-btn ' + (fontFamily === f ? 'active' : '') + '" data-font="' + f + '" style="font-family:' + f + ',sans-serif">' + f + '</button>').join('')}</div></div>
           </div>
-          <div class="theme-actions">
-            <button class="btn-primary" id="save-theme-btn">Save Theme</button>
-            <button class="btn-ghost" id="reset-theme-btn">Reset to Default</button>
-          </div>
+          <div class="theme-actions"><button class="btn-primary" id="save-theme-btn">Save Theme</button><button class="btn-ghost" id="reset-theme-btn">Reset to Default</button></div>
         </section>`;
 
       ['brand','bg','surface','text'].forEach(key => {
@@ -386,9 +360,14 @@
       document.getElementById('t-logo').addEventListener('input', e => {
         const url = e.target.value.trim();
         const wrap = document.getElementById('logo-preview-wrap');
-        const img  = document.getElementById('logo-preview-img');
-        if (url) { img.src = url; img.onload = () => { wrap.style.display = 'flex'; }; img.onerror = () => { wrap.style.display = 'none'; }; }
-        else wrap.style.display = 'none';
+        const img = document.getElementById('logo-preview-img');
+        if (url) {
+          img.src = url;
+          img.onload = () => { wrap.style.display = 'flex'; };
+          img.onerror = () => { wrap.style.display = 'none'; };
+        } else {
+          wrap.style.display = 'none';
+        }
         previewTheme();
       });
 
@@ -404,16 +383,121 @@
       document.getElementById('reset-theme-btn').addEventListener('click', resetTheme);
     }
 
+    function renderTeamList() {
+      const el = document.getElementById('team-list');
+      if (!teamMembers.length) {
+        el.innerHTML = '<p class="error-msg">No team members yet. Add one above.</p>';
+        return;
+      }
+
+      el.innerHTML = teamMembers.map((member) => `
+        <div class="admin-item-row">
+          <div class="admin-item-info">
+            <span class="admin-item-name">${esc(member.display_name || member.email || member.uid)}</span>
+            <span class="admin-item-desc">${esc(member.email || member.uid)}</span>
+            <span class="avail-badge yes">${esc(member.role)}</span>
+            <span class="avail-badge ${member.status === 'active' ? 'yes' : 'no'}">${esc(member.status || 'active')}</span>
+          </div>
+          <div class="admin-item-actions">
+            <button class="btn-sm btn-edit" data-team-uid="${esc(member.uid)}">Edit</button>
+            <button class="btn-sm btn-delete" data-team-uid="${esc(member.uid)}">Remove</button>
+          </div>
+        </div>`).join('');
+
+      el.querySelectorAll('[data-team-uid]').forEach((btn) => {
+        const uid = btn.dataset.teamUid;
+        if (btn.classList.contains('btn-edit')) {
+          btn.addEventListener('click', () => startTeamEdit(uid));
+        }
+        if (btn.classList.contains('btn-delete')) {
+          btn.addEventListener('click', () => removeTeam(uid));
+        }
+      });
+    }
+
+    async function handleTeamSubmit() {
+      const uid = document.getElementById('team-uid').value.trim();
+      const email = document.getElementById('team-email').value.trim();
+      const display_name = document.getElementById('team-name').value.trim();
+      const role = document.getElementById('team-role').value;
+
+      if (!uid || !email) return showTeamError('User UID and email are required.');
+
+      const btn = document.getElementById('team-add-btn');
+      btn.disabled = true;
+      hideTeamError();
+      try {
+        if (editingTeamUid) {
+          await window.QRCafeApp.updateTeamMember(currentSession.cafeId, editingTeamUid, { role });
+          showToast('Team member updated!');
+        } else {
+          await window.QRCafeApp.addTeamMember(currentSession.cafeId, { uid, email, display_name, role });
+          showToast('Team member added!');
+        }
+        cancelTeamEdit();
+        await loadTeamMembers();
+      } catch (err) {
+        showTeamError(err.message || 'Failed to save team member.');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function startTeamEdit(uid) {
+      const member = teamMembers.find((m) => m.uid === uid);
+      if (!member) return;
+      editingTeamUid = uid;
+      document.getElementById('team-uid').value = member.uid;
+      document.getElementById('team-email').value = member.email || '';
+      document.getElementById('team-name').value = member.display_name || '';
+      document.getElementById('team-role').value = member.role || 'cashier';
+      document.getElementById('team-uid').disabled = true;
+      document.getElementById('team-email').disabled = true;
+      document.getElementById('team-name').disabled = true;
+      document.getElementById('team-add-btn').textContent = 'Save Member';
+      document.getElementById('team-cancel-btn').classList.remove('hidden');
+    }
+
+    function cancelTeamEdit() {
+      editingTeamUid = null;
+      document.getElementById('team-uid').value = '';
+      document.getElementById('team-email').value = '';
+      document.getElementById('team-name').value = '';
+      document.getElementById('team-role').value = 'cashier';
+      document.getElementById('team-uid').disabled = false;
+      document.getElementById('team-email').disabled = false;
+      document.getElementById('team-name').disabled = false;
+      document.getElementById('team-add-btn').textContent = 'Add Member';
+      document.getElementById('team-cancel-btn').classList.add('hidden');
+      hideTeamError();
+    }
+
+    async function removeTeam(uid) {
+      const member = teamMembers.find((m) => m.uid === uid);
+      if (!confirm('Remove ' + (member ? member.display_name || member.email || uid : uid) + ' from team?')) return;
+      try {
+        await window.QRCafeApp.removeTeamMember(currentSession.cafeId, uid);
+        showToast('Team member removed.');
+        await loadTeamMembers();
+      } catch (err) {
+        showTeamError(err.message || 'Failed to remove member.');
+      }
+    }
+
     function getFormThemeValues() {
       const activeFont = document.querySelector('.font-btn.active');
       return {
-        cafeName:     document.getElementById('t-name').value.trim() || 'Our Cafe',
-        logoUrl:      document.getElementById('t-logo').value.trim(),
-        brandColor:   document.getElementById('t-brand').value,
-        bgColor:      document.getElementById('t-bg').value,
+        cafeName: document.getElementById('t-name').value.trim() || 'Our Cafe',
+        logoUrl: document.getElementById('t-logo').value.trim(),
+        gstNumber: document.getElementById('t-gst').value.trim(),
+        fssaiNumber: document.getElementById('t-fssai').value.trim(),
+        restaurantPhone: document.getElementById('t-phone').value.trim(),
+        restaurantAddress: document.getElementById('t-address').value.trim(),
+        brandColor: document.getElementById('t-brand').value,
+        bgColor: document.getElementById('t-bg').value,
         surfaceColor: document.getElementById('t-surface').value,
-        textColor:    document.getElementById('t-text').value,
-        fontFamily:   activeFont ? activeFont.dataset.font : 'DM Sans',
+        textColor: document.getElementById('t-text').value,
+        fontFamily: activeFont ? activeFont.dataset.font : 'DM Sans',
       };
     }
 
@@ -433,24 +517,43 @@
       showToast('Theme reset to default.');
     }
 
-    // ── helpers ────────────────────────────────────────────
     function showError(msg) {
       const el = document.getElementById('form-error');
-      el.textContent = msg; el.classList.remove('hidden');
+      el.textContent = msg;
+      el.classList.remove('hidden');
     }
-    function hideError() { document.getElementById('form-error').classList.add('hidden'); }
+
+    function hideError() {
+      document.getElementById('form-error').classList.add('hidden');
+    }
+
+    function showTeamError(msg) {
+      const el = document.getElementById('team-error');
+      el.textContent = msg;
+      el.classList.remove('hidden');
+    }
+
+    function hideTeamError() {
+      document.getElementById('team-error').classList.add('hidden');
+    }
+
     function showToast(msg, type) {
       const t = document.getElementById('toast');
       t.textContent = msg;
       t.className = 'toast ' + (type || 'success');
       setTimeout(() => t.classList.add('hidden'), 3000);
     }
+
     function esc(str) {
       if (!str) return '';
       const d = document.createElement('div');
       d.textContent = str;
       return d.innerHTML;
     }
+
+    window.addEventListener('beforeunload', () => {
+      if (typeof unsubscribeMenu === 'function') unsubscribeMenu();
+    });
   </script>
 </body>
 </html>

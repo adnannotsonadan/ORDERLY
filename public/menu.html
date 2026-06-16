@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -7,7 +7,12 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
-  <script src="/theme.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="auth-client.js"></script>
+  <script src="theme.js"></script>
 </head>
 <body class="menu-page">
   <header class="menu-header">
@@ -25,7 +30,10 @@
   <nav class="category-tabs" id="category-tabs"></nav>
 
   <main class="menu-body" id="menu-body">
-    <div class="loading-state"><div class="spinner"></div><p>Loading menu...</p></div>
+    <nav class="menu-sidebar" id="menu-sidebar"></nav>
+    <div class="menu-content" id="menu-content">
+      <div class="loading-state"><div class="spinner"></div><p>Loading menu...</p></div>
+    </div>
   </main>
 
   <div class="overlay hidden" id="overlay"></div>
@@ -36,10 +44,16 @@
     <div class="cart-footer hidden" id="cart-footer"><div class="cart-total-row"><span>Total</span><strong id="cart-total">0.00</strong></div><button class="btn-place-order" id="place-order-btn">Proceed to Order</button></div>
   </aside>
 
-  <div class="wa-modal hidden" id="wa-modal"><div class="wa-modal-box"><div class="wa-modal-icon">Call</div><h3>Enter Your WhatsApp Number</h3><p>We will confirm your order on WhatsApp.</p><div class="wa-input-wrap"><span class="wa-prefix">+91</span><input type="tel" id="wa-input" maxlength="10" placeholder="9876543210" inputmode="numeric" pattern="[0-9]*"></div><p class="wa-error hidden" id="wa-error">Please enter a valid 10-digit number.</p><div class="wa-modal-actions"><button class="btn-ghost" id="wa-cancel">Cancel</button><button class="btn-primary" id="wa-confirm">Place Order</button></div></div></div>
+  <div class="wa-modal hidden" id="wa-modal"><div class="wa-modal-box"><div class="wa-modal-icon">Call</div><h3>Enter Customer Details</h3><p>We will confirm your order on WhatsApp.</p><div class="wa-input-wrap"><span class="wa-prefix">+91</span><input type="tel" id="wa-input" maxlength="10" placeholder="9876543210" inputmode="numeric" pattern="[0-9]*"></div><input type="text" id="wa-name" placeholder="Customer name (optional)" style="margin-top:8px;width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;"><input type="email" id="wa-email" placeholder="Email (optional)" style="margin-top:8px;width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;"><p class="wa-error hidden" id="wa-error">Please enter a valid 10-digit number.</p><div class="wa-modal-actions"><button class="btn-ghost" id="wa-cancel">Cancel</button><button class="btn-primary" id="wa-confirm">Place Order</button></div><div class="wa-modal-actions" style="margin-top:8px;"><button class="btn-ghost" id="open-track-btn" style="width:100%;">Track Existing Order</button></div></div></div>
+
+  <div class="wa-modal hidden" id="order-success-modal"><div class="wa-modal-box"><h3>Order Placed Successfully</h3><p id="order-success-text"></p><div id="order-success-items" style="text-align:left;max-height:180px;overflow:auto;"></div><div class="wa-modal-actions"><button class="btn-primary" id="order-success-close">Done</button></div></div></div>
+  <div class="wa-modal hidden" id="track-modal"><div class="wa-modal-box"><h3>Track Your Order</h3><div class="wa-input-wrap"><span class="wa-prefix">+91</span><input type="tel" id="track-phone" maxlength="10" placeholder="9876543210" inputmode="numeric" pattern="[0-9]*"></div><p class="wa-error hidden" id="track-error">Please enter a valid 10-digit number.</p><div class="wa-modal-actions"><button class="btn-ghost" id="track-cancel">Close</button><button class="btn-primary" id="track-check">Check Status</button></div><div id="track-results" style="margin-top:10px;text-align:left;"></div></div></div>
 
   <div class="toast hidden" id="toast"></div>
-  <button class="call-waiter-btn" id="call-waiter-btn">Call Waiter</button>
+  <div class="menu-fab-bar">
+    <button class="call-waiter-btn" id="call-waiter-btn">Call Waiter</button>
+    <button class="track-order-btn" id="track-order-btn">Track Order</button>
+  </div>
 
   <script>
     let allItems = [];
@@ -50,7 +64,7 @@
 
     document.addEventListener('DOMContentLoaded', async () => {
       const params = new URLSearchParams(window.location.search);
-      cafeId = params.get('cafe_id') || (window.CafeTheme && window.CafeTheme.getCafeId ? window.CafeTheme.getCafeId() : null);
+      cafeId = params.get('cafe_id') || (window.QRCafeApp && window.QRCafeApp.getCafeIdFromUrl ? window.QRCafeApp.getCafeIdFromUrl() : null);
       document.getElementById('table-badge').textContent = 'Table #' + (params.get('table') || '1');
       await loadMenu();
       setupDrawer();
@@ -58,22 +72,44 @@
       setupWaiterCall();
     });
 
-    function withCafe(path) {
-      if (!cafeId) return path;
-      const url = new URL(path, window.location.origin);
-      url.searchParams.set('cafe_id', cafeId);
-      return url.pathname + url.search;
-    }
-
     async function loadMenu() {
       try {
-        const res = await fetch(withCafe('/api/menu'));
-        allItems = await res.json();
+        allItems = await window.QRCafeApp.getMenuItems(cafeId);
         renderCategoryTabs();
-        renderMenu('All');
+        renderSidebar();
+        renderMenu(activeCategory);
       } catch {
-        document.getElementById('menu-body').innerHTML = '<p class="error-msg">Could not load menu. Please refresh.</p>';
+        document.getElementById('menu-content').innerHTML = '<p class="error-msg">Could not load menu. Please refresh.</p>';
       }
+    }
+
+    function renderSidebar() {
+      const sidebar = document.getElementById('menu-sidebar');
+      const usedCats = CATEGORIES.filter(c => allItems.some(i => i.category === c && i.available));
+      const trending = allItems.filter(i => i.is_trending && i.available);
+      const allCount = allItems.filter(i => i.available).length;
+      let html = '<div class="sidebar-label">Categories</div>';
+      if (trending.length > 0) {
+        html += `<button class="sidebar-cat-btn active" data-cat="Trending">🔥 Trending <span class="s-count">${trending.length}</span></button>`;
+      }
+      html += `<button class="sidebar-cat-btn ${trending.length === 0 ? 'active' : ''}" data-cat="All">All <span class="s-count">${allCount}</span></button>`;
+      usedCats.forEach(cat => {
+        const count = allItems.filter(i => i.category === cat && i.available).length;
+        html += `<button class="sidebar-cat-btn" data-cat="${cat}">${cat} <span class="s-count">${count}</span></button>`;
+      });
+      sidebar.innerHTML = html;
+      sidebar.querySelectorAll('.sidebar-cat-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          sidebar.querySelectorAll('.sidebar-cat-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          activeCategory = btn.dataset.cat;
+          renderMenu(activeCategory);
+          document.querySelectorAll('.cat-tab').forEach(t => {
+            t.classList.toggle('active', t.dataset.cat === activeCategory);
+          });
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+      });
     }
 
     function renderCategoryTabs() {
@@ -87,7 +123,7 @@
         tabs += '<button class="cat-tab" data-cat="' + cat + '">' + cat + ' <span class="cat-count">' + count + '</span></button>';
       });
       nav.innerHTML = tabs;
-      const firstTab = nav.querySelector('.cat-tab');
+      const firstTab = nav.querySelector('.cat-tab[data-cat="All"]') || nav.querySelector('.cat-tab');
       if (firstTab) { firstTab.classList.add('active'); activeCategory = firstTab.dataset.cat; }
       nav.onclick = (e) => {
         const btn = e.target.closest('.cat-tab');
@@ -96,29 +132,33 @@
         btn.classList.add('active');
         activeCategory = btn.dataset.cat;
         renderMenu(activeCategory);
+        // sync sidebar
+        document.querySelectorAll('.sidebar-cat-btn').forEach(b => {
+          b.classList.toggle('active', b.dataset.cat === activeCategory);
+        });
       };
     }
 
     function renderMenu(category) {
-      const body = document.getElementById('menu-body');
+      const body = document.getElementById('menu-content');
       let html = '';
       if (category === 'Trending') {
         html += renderItemList(allItems.filter(i => i.is_trending && i.available));
       } else if (category === 'All') {
         const trending = allItems.filter(i => i.is_trending && i.available);
         if (trending.length > 0) {
-          html += '<div class="trending-strip-wrap"><div class="trending-strip-title">Trending Now</div><div class="trending-strip">';
+          html += '<div class="trending-strip-wrap"><div class="trending-strip-title">Trending Now</div><div class="trending-strip-nav"><span class="trending-strip-title">Trending Now</span><button class="trending-scroll-btn" id="trending-prev">&#8592;</button><button class="trending-scroll-btn" id="trending-next">&#8594;</button></div><div class="trending-strip" id="trending-strip">';
           trending.forEach(item => { html += renderTrendingCard(item); });
           html += '</div></div>';
         }
         CATEGORIES.forEach(cat => {
           const catItems = allItems.filter(i => i.category === cat && i.available);
           if (!catItems.length) return;
-          html += '<div class="menu-section"><div class="menu-section-title">' + cat + '</div>' + renderItemList(catItems) + '</div>';
+          html += '<div class="menu-section"><div class="menu-section-title">' + cat + '</div><div class="menu-items-grid">' + renderItemList(catItems) + '</div></div>';
         });
       } else {
         const items = allItems.filter(i => i.category === category && i.available);
-        html += '<div class="menu-section"><div class="menu-section-title">' + category + '</div>' + renderItemList(items) + '</div>';
+        html += '<div class="menu-section"><div class="menu-section-title">' + category + '</div><div class="menu-items-grid">' + renderItemList(items) + '</div></div>';
       }
       body.innerHTML = html || '<p class="error-msg">No items in this category.</p>';
       bindItemButtons();
@@ -140,21 +180,105 @@
       document.querySelectorAll('.btn-add').forEach(btn => btn.addEventListener('click', () => addToCart(btn.dataset.id)));
       document.querySelectorAll('.btn-inc').forEach(btn => btn.addEventListener('click', () => changeQty(btn.dataset.id, 1)));
       document.querySelectorAll('.btn-dec').forEach(btn => btn.addEventListener('click', () => changeQty(btn.dataset.id, -1)));
+      const strip = document.getElementById('trending-strip');
+      const prev = document.getElementById('trending-prev');
+      const next = document.getElementById('trending-next');
+      if (strip && prev && next) {
+        prev.addEventListener('click', () => strip.scrollBy({ left: -300, behavior: 'smooth' }));
+        next.addEventListener('click', () => strip.scrollBy({ left: 300, behavior: 'smooth' }));
+      }
     }
 
     function addToCart(id) { const item = allItems.find(i => i.id === id); if (!item) return; const existing = cart.find(i => i.id === id); if (existing) existing.quantity += 1; else cart.push({ id: item.id, name: item.name, price: item.price, quantity: 1 }); syncCartUI(); renderMenu(activeCategory); }
     function changeQty(id, delta) { const target = cart.find(i => i.id === id); if (!target) return; target.quantity += delta; if (target.quantity <= 0) cart = cart.filter(i => i.id !== id); syncCartUI(); renderMenu(activeCategory); renderCartItems(); }
     function syncCartUI() { const count = cart.reduce((sum, item) => sum + item.quantity, 0); const badge = document.getElementById('cart-badge'); if (count > 0) { badge.textContent = count; badge.classList.remove('hidden'); } else { badge.classList.add('hidden'); } }
-    function setupDrawer() { document.getElementById('cart-btn').addEventListener('click', openCart); document.getElementById('cart-close').addEventListener('click', closeCart); document.getElementById('overlay').addEventListener('click', () => { closeCart(); closeWAModal(); }); document.getElementById('place-order-btn').addEventListener('click', () => { closeCart(); openWAModal(); }); }
+    function setupDrawer() { document.getElementById('cart-btn').addEventListener('click', openCart); document.getElementById('cart-close').addEventListener('click', closeCart); document.getElementById('overlay').addEventListener('click', () => { closeCart(); closeWAModal(); closeTrackModal(); closeSuccessModal(); }); document.getElementById('place-order-btn').addEventListener('click', () => { closeCart(); openWAModal(); }); }
     function openCart() { renderCartItems(); document.getElementById('cart-drawer').classList.remove('hidden'); document.getElementById('overlay').classList.remove('hidden'); }
     function closeCart() { document.getElementById('cart-drawer').classList.add('hidden'); document.getElementById('overlay').classList.add('hidden'); }
     function renderCartItems() { const wrap = document.getElementById('cart-items-wrap'); const footer = document.getElementById('cart-footer'); if (!cart.length) { wrap.innerHTML = '<div class="cart-empty"><div class="empty-icon">Cart</div><p>Nothing here yet.<br>Add items from the menu.</p></div>'; footer.classList.add('hidden'); return; } let total = 0; wrap.innerHTML = cart.map(item => { const sub = item.price * item.quantity; total += sub; return '<div class="cart-row"><div class="cart-row-info"><div class="cart-row-name">' + esc(item.name) + '</div><div class="cart-row-sub">Rs ' + (item.price / 100).toFixed(2) + ' each</div></div><div class="cart-row-right"><div class="qty-control small"><button class="btn-dec" data-id="' + item.id + '">-</button><span class="qty-num">' + item.quantity + '</span><button class="btn-inc" data-id="' + item.id + '">+</button></div><div class="cart-row-price">Rs ' + (sub / 100).toFixed(2) + '</div></div></div>'; }).join(''); wrap.querySelectorAll('.btn-inc').forEach(btn => btn.addEventListener('click', () => changeQty(btn.dataset.id, 1))); wrap.querySelectorAll('.btn-dec').forEach(btn => btn.addEventListener('click', () => changeQty(btn.dataset.id, -1))); document.getElementById('cart-total').textContent = 'Rs ' + (total / 100).toFixed(2); footer.classList.remove('hidden'); }
-    function setupWAModal() { document.getElementById('wa-cancel').addEventListener('click', () => { closeWAModal(); openCart(); }); document.getElementById('wa-confirm').addEventListener('click', handleWAConfirm); document.getElementById('wa-input').addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, ''); }); }
+    function setupWAModal() {
+      document.getElementById('wa-cancel').addEventListener('click', () => { closeWAModal(); openCart(); });
+      document.getElementById('wa-confirm').addEventListener('click', handleWAConfirm);
+      document.getElementById('open-track-btn').addEventListener('click', openTrackModal);
+      document.getElementById('order-success-close').addEventListener('click', closeSuccessModal);
+      document.getElementById('track-cancel').addEventListener('click', closeTrackModal);
+      document.getElementById('track-check').addEventListener('click', checkTracking);
+      document.getElementById('wa-input').addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 10); });
+      document.getElementById('track-phone').addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 10); });
+      document.getElementById('wa-input').addEventListener('blur', autofillCustomerByPhone);
+    }
     function openWAModal() { document.getElementById('wa-modal').classList.remove('hidden'); document.getElementById('overlay').classList.remove('hidden'); }
-    function closeWAModal() { document.getElementById('wa-modal').classList.add('hidden'); document.getElementById('overlay').classList.add('hidden'); document.getElementById('wa-error').classList.add('hidden'); document.getElementById('wa-input').value = ''; }
-    async function handleWAConfirm() { const num = document.getElementById('wa-input').value.trim(); if (!/^\d{10}$/.test(num)) { document.getElementById('wa-error').classList.remove('hidden'); return; } document.getElementById('wa-error').classList.add('hidden'); await placeOrder(num); }
-    async function placeOrder(waNumber) { const params = new URLSearchParams(window.location.search); const tableNumber = parseInt(params.get('table') || '1', 10); const btn = document.getElementById('wa-confirm'); btn.disabled = true; btn.textContent = 'Placing...'; try { const res = await fetch('/api/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cafe_id: cafeId, table_number: tableNumber, whatsapp_number: waNumber, items: cart.map(i => ({ id: i.id, name: i.name, price: i.price, quantity: i.quantity })) }) }); const data = await res.json(); if (!res.ok) { document.getElementById('wa-error').textContent = data.error || 'Failed to place order.'; document.getElementById('wa-error').classList.remove('hidden'); return; } cart = []; syncCartUI(); closeWAModal(); renderMenu(activeCategory); showToast('Order placed successfully.'); } catch { document.getElementById('wa-error').textContent = 'Network error. Please try again.'; document.getElementById('wa-error').classList.remove('hidden'); } finally { btn.disabled = false; btn.textContent = 'Place Order'; } }
-    function setupWaiterCall() { const btn = document.getElementById('call-waiter-btn'); let coolingDown = false; btn.addEventListener('click', async () => { if (coolingDown) return; const params = new URLSearchParams(window.location.search); const tableNumber = parseInt(params.get('table') || '1', 10); btn.disabled = true; btn.textContent = 'Calling...'; try { const response = await fetch('/api/waiter', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cafe_id: cafeId, table_number: tableNumber }) }); if (response.ok || response.status === 409) { showToast(response.status === 409 ? 'Waiter is already on the way.' : 'Waiter has been called.'); coolingDown = true; btn.textContent = 'Waiter Called'; setTimeout(() => { coolingDown = false; btn.disabled = false; btn.textContent = 'Call Waiter'; }, 60000); return; } } catch {} btn.disabled = false; btn.textContent = 'Call Waiter'; showToast('Could not call waiter.', 'error'); }); }
+    function closeWAModal() { document.getElementById('wa-modal').classList.add('hidden'); document.getElementById('wa-error').classList.add('hidden'); document.getElementById('wa-input').value = ''; document.getElementById('wa-name').value = ''; document.getElementById('wa-email').value = ''; if (document.getElementById('track-modal').classList.contains('hidden') && document.getElementById('order-success-modal').classList.contains('hidden')) { document.getElementById('overlay').classList.add('hidden'); } }
+    function openSuccessModal(order) {
+      const total = (order.total_price || 0) / 100;
+      document.getElementById('order-success-text').textContent = `Order #${order.order_number || order.id} placed. Current status: ${order.status}. Total: Rs ${total.toFixed(2)}.`;
+      document.getElementById('order-success-items').innerHTML = (order.items || []).map((item) => `<div style="display:flex;justify-content:space-between;padding:4px 0;"><span>${esc(item.name)} x${item.quantity}</span><span>Rs ${((item.price * item.quantity) / 100).toFixed(2)}</span></div>`).join('');
+      document.getElementById('order-success-modal').classList.remove('hidden');
+      document.getElementById('overlay').classList.remove('hidden');
+    }
+    function closeSuccessModal() { document.getElementById('order-success-modal').classList.add('hidden'); document.getElementById('overlay').classList.add('hidden'); }
+    function openTrackModal() { document.getElementById('track-modal').classList.remove('hidden'); document.getElementById('wa-modal').classList.add('hidden'); document.getElementById('overlay').classList.remove('hidden'); }
+    function closeTrackModal() { document.getElementById('track-modal').classList.add('hidden'); document.getElementById('overlay').classList.add('hidden'); }
+    async function autofillCustomerByPhone() {
+      const num = document.getElementById('wa-input').value.trim();
+      if (!/^\d{10}$/.test(num)) return;
+      const customer = await window.QRCafeApp.lookupCustomerByPhone(cafeId, num);
+      if (!customer) return;
+      if (customer.name) document.getElementById('wa-name').value = customer.name;
+      if (customer.email) document.getElementById('wa-email').value = customer.email;
+    }
+    async function handleWAConfirm() {
+      const num = document.getElementById('wa-input').value.trim();
+      if (!/^\d{10}$/.test(num)) { document.getElementById('wa-error').classList.remove('hidden'); return; }
+      document.getElementById('wa-error').classList.add('hidden');
+      await placeOrder(num);
+    }
+    async function placeOrder(waNumber) {
+      const params = new URLSearchParams(window.location.search);
+      const tableNumber = parseInt(params.get('table') || '1', 10);
+      const customerName = document.getElementById('wa-name').value.trim();
+      const customerEmail = document.getElementById('wa-email').value.trim();
+      const btn = document.getElementById('wa-confirm');
+      btn.disabled = true;
+      btn.textContent = 'Placing...';
+      try {
+        const order = await window.QRCafeApp.createOrder(cafeId, {
+          tableNumber,
+          whatsappNumber: waNumber,
+          customerName,
+          customerEmail,
+          items: cart.map(i => ({ id: i.id, quantity: i.quantity })),
+          source: 'dine_in',
+          billingStatus: 'unbilled',
+          status: 'pending'
+        });
+        cart = [];
+        syncCartUI();
+        closeWAModal();
+        renderMenu(activeCategory);
+        openSuccessModal(order);
+      } catch (err) {
+        document.getElementById('wa-error').textContent = err.message || 'Failed to place order.';
+        document.getElementById('wa-error').classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Place Order';
+      }
+    }
+    async function checkTracking() {
+      const phone = document.getElementById('track-phone').value.trim();
+      const results = document.getElementById('track-results');
+      if (!/^\d{10}$/.test(phone)) { document.getElementById('track-error').classList.remove('hidden'); return; }
+      document.getElementById('track-error').classList.add('hidden');
+      const orders = await window.QRCafeApp.getOrdersByPhone(cafeId, phone);
+      if (!orders.length) {
+        results.innerHTML = '<p class="error-msg" style="padding:10px 0;">No orders found for this number.</p>';
+        return;
+      }
+      results.innerHTML = orders.slice(0, 8).map((order) => `<div style="padding:8px 0;border-bottom:1px solid var(--border);"><strong>#${order.order_number || order.id}</strong> • ${order.status}<br><small>${new Date(order.created_at).toLocaleString()} • Rs ${((order.total_price || 0) / 100).toFixed(2)}</small></div>`).join('');
+    }
+    function setupWaiterCall() { const btn = document.getElementById('call-waiter-btn'); let coolingDown = false; btn.addEventListener('click', async () => { if (coolingDown) return; const params = new URLSearchParams(window.location.search); const tableNumber = parseInt(params.get('table') || '1', 10); btn.disabled = true; btn.textContent = 'Calling...'; try { await window.QRCafeApp.createWaiterCall(cafeId, tableNumber); showToast('Waiter has been called.'); coolingDown = true; btn.textContent = 'Waiter Called'; setTimeout(() => { coolingDown = false; btn.disabled = false; btn.textContent = 'Call Waiter'; }, 60000); return; } catch (err) { if (err.code === 'waiter-call-exists') { showToast('Waiter is already on the way.'); coolingDown = true; btn.textContent = 'Waiter Called'; setTimeout(() => { coolingDown = false; btn.disabled = false; btn.textContent = 'Call Waiter'; }, 60000); return; } } btn.disabled = false; btn.textContent = 'Call Waiter'; showToast('Could not call waiter.', 'error'); }); }
+    document.getElementById('track-order-btn').addEventListener('click', openTrackModal);
     function showToast(msg, type) { const toast = document.getElementById('toast'); toast.textContent = msg; toast.className = 'toast ' + (type || 'success'); setTimeout(() => toast.classList.add('hidden'), 3000); }
     function esc(str) { const div = document.createElement('div'); div.textContent = str || ''; return div.innerHTML; }
   </script>
